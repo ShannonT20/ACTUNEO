@@ -200,9 +200,9 @@ If you use ACTUNEO in your research or work, please cite:
 ## Contact
 
 - **Author**: Shannon Tafadzwa Sikadi
-- **Email**: [Your email here]
-- **GitHub**: [https://github.com/yourusername/actuneo](https://github.com/yourusername/actuneo)
-- **LinkedIn**: [Your LinkedIn profile]
+- **Email**: shannonsikadi@gmail.com
+- **GitHub**: https://github.com/ShannonT20/ACTUNEO
+- **LinkedIn**: https://www.linkedin.com/in/shannon-sikadi-9370b3196/
 
 ## Acknowledgments
 
