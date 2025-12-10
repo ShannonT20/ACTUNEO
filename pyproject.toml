@@ -61,7 +61,7 @@ viz = [
 
 [project.urls]
 Homepage = "https://github.com/ShannonT20/ACTUNEO"
-Documentation = "https://github.com/ShannonT20/ACTUNEO"
+Documentation = "https://actuneo.readthedocs.io/"
 Repository = "https://github.com/ShannonT20/ACTUNEO"
 "Bug Tracker" = "https://github.com/ShannonT20/ACTUNEO/issues"
 

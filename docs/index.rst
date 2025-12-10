@@ -1,11 +1,15 @@
-ACTUNEO: African Actuarial Python Library
-==========================================
+ACTUNEO: Comprehensive Actuarial Python Library
+================================================
 
 **ACTUNEO** is an open-source, community-driven actuarial Python library that empowers African and Zimbabwean actuaries to perform core actuarial, financial, and statistical computations with ease.
 
 .. image:: https://img.shields.io/badge/python-3.8+-blue.svg
    :target: https://www.python.org/downloads/
    :alt: Python Version
+
+.. image:: https://readthedocs.org/projects/actuneo/badge/?version=latest
+   :target: https://actuneo.readthedocs.io/en/latest/?badge=latest
+   :alt: Documentation Status
 
 .. image:: https://img.shields.io/badge/License-MIT-yellow.svg
    :target: https://opensource.org/licenses/MIT
@@ -14,6 +18,10 @@ ACTUNEO: African Actuarial Python Library
 .. image:: https://badge.fury.io/py/actuneo.svg
    :target: https://badge.fury.io/py/actuneo
    :alt: PyPI version
+
+.. image:: https://img.shields.io/badge/GitHub-Repository-blue.svg
+   :target: https://github.com/ShannonT20/ACTUNEO
+   :alt: GitHub
 
 Vision and Objective
 --------------------

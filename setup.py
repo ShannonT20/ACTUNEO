@@ -81,6 +81,6 @@ setup(
     project_urls={
         'Bug Reports': 'https://github.com/ShannonT20/ACTUNEO/issues',
         'Source': 'https://github.com/ShannonT20/ACTUNEO',
-        'Documentation': 'https://github.com/ShannonT20/ACTUNEO',
+        'Documentation': 'https://actuneo.readthedocs.io/',
     },
 )

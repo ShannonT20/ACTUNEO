@@ -1,9 +1,9 @@
 # ACTUNEO: Compherensive Actuarial Python Library
 
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Documentation Status](https://readthedocs.org/projects/actuneo/badge/?version=latest)](https://actuneo.readthedocs.io/en/latest/?badge=latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/actuneo.svg)](https://badge.fury.io/py/actuneo)
-[![Documentation Status](https://readthedocs.org/projects/actuneo/badge/?version=latest)](https://actuneo.readthedocs.io/en/latest/?badge=latest)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-blue.svg)](https://github.com/ShannonT20/ACTUNEO)
 
 ## Vision and Objective
@@ -33,7 +33,7 @@ ACTUNEO is an open-source, community-driven actuarial Python library that empowe
 
 ## Installation
 
-### From PyPI (Coming Soon)
+### From PyPI
 
 ```bash
 pip install actuneo
@@ -111,7 +111,24 @@ print(f"Reserve after 5 years: ${reserve:.2f}")
 
 ## Documentation
 
-Full documentation is available at [https://actuneo.readthedocs.io/](https://actuneo.readthedocs.io/)
+📚 **Full documentation is available at [https://actuneo.readthedocs.io/](https://actuneo.readthedocs.io/)**
+
+The documentation includes:
+
+- **Installation Guide**: Step-by-step installation instructions
+- **Quick Start**: Get started with ACTUNEO in minutes
+- **Examples**: Comprehensive code examples for all modules
+- **API Reference**: Complete API documentation for all classes and functions
+- **Contributing Guide**: How to contribute to the project
+- **Changelog**: Version history and release notes
+
+### Documentation Sections
+
+- [Installation Guide](https://actuneo.readthedocs.io/en/latest/installation.html)
+- [Quick Start Tutorial](https://actuneo.readthedocs.io/en/latest/quickstart.html)
+- [Examples](https://actuneo.readthedocs.io/en/latest/examples.html)
+- [API Reference](https://actuneo.readthedocs.io/en/latest/api/mortality.html)
+- [Contributing](https://actuneo.readthedocs.io/en/latest/contributing.html)
 
 ## Contributing
 
@@ -190,11 +207,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 If you use ACTUNEO in your research or work, please cite:
 
 ```bibtex
-@software{sikadi_actuneo_2024,
+@software{sikadi_actuneo_2025,
   author = {Sikadi, Shannon Tafadzwa},
   title = {ACTUNEO: African Actuarial Python Library},
   url = {https://github.com/yourusername/actuneo},
-  year = {2024}
+  year = {2025}
 }
 ```
 
