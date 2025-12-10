@@ -150,3 +150,9 @@ cython_debug/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Documentation and research files
+PUBLISH_GUIDE.md
+research_paper.html
+ACTUNEO_research_paper.pdf
+research_paper.tex

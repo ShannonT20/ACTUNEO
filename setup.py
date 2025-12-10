@@ -31,13 +31,13 @@ Modules:
 
 setup(
     name='actuneo',
-    version='0.1.0',
+    version='0.1.1',
     author='Shannon Tafadzwa Sikadi',
-    author_email='',  # Add email when ready
+    author_email='shannonsikadi@gmail.com',
     description='African Actuarial Python Library for insurance, pensions, and investment analytics',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    url='https://github.com/yourusername/actuneo',  # Update with actual GitHub URL
+    url='https://github.com/ShannonT20/ACTUNEO',
     packages=find_packages(),
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -79,8 +79,8 @@ setup(
         ],
     },
     project_urls={
-        'Bug Reports': 'https://github.com/yourusername/actuneo/issues',
-        'Source': 'https://github.com/yourusername/actuneo',
-        'Documentation': 'https://actuneo.readthedocs.io/',
+        'Bug Reports': 'https://github.com/ShannonT20/ACTUNEO/issues',
+        'Source': 'https://github.com/ShannonT20/ACTUNEO',
+        'Documentation': 'https://github.com/ShannonT20/ACTUNEO',
     },
 )

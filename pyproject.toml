@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "actuneo"
-version = "0.1.0"
+version = "0.1.1"
 description = "African Actuarial Python Library for insurance, pensions, and investment analytics"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Shannon Tafadzwa Sikadi", email = ""},
+    {name = "Shannon Tafadzwa Sikadi", email = "shannonsikadi@gmail.com"},
 ]
 keywords = [
     "actuarial",
@@ -60,13 +60,13 @@ viz = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/actuneo"
-Documentation = "https://actuneo.readthedocs.io/"
-Repository = "https://github.com/yourusername/actuneo"
-"Bug Tracker" = "https://github.com/yourusername/actuneo/issues"
+Homepage = "https://github.com/ShannonT20/ACTUNEO"
+Documentation = "https://github.com/ShannonT20/ACTUNEO"
+Repository = "https://github.com/ShannonT20/ACTUNEO"
+"Bug Tracker" = "https://github.com/ShannonT20/ACTUNEO/issues"
 
 [tool.setuptools]
-packages = ["actuneo"]
+packages = {find = {}}
 
 [tool.black]
 line-length = 100
