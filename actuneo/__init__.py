@@ -16,10 +16,10 @@ Modules:
 - utils: Excel/CSV input-output functions, validation, and reporting
 
 Author: Shannon Tafadzwa Sikadi
-Version: 0.1.0
+Version: 0.1.2
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Shannon Tafadzwa Sikadi"
 __description__ = "African Actuarial Python Library for insurance, pensions, and investment analytics"
 

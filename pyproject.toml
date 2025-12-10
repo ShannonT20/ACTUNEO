@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "actuneo"
-version = "0.1.1"
+version = "0.1.2"
 description = "African Actuarial Python Library for insurance, pensions, and investment analytics"
 readme = "README.md"
 license = {text = "MIT"}

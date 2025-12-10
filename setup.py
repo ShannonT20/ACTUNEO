@@ -31,7 +31,7 @@ Modules:
 
 setup(
     name='actuneo',
-    version='0.1.1',
+    version='0.1.2',
     author='Shannon Tafadzwa Sikadi',
     author_email='shannonsikadi@gmail.com',
     description='African Actuarial Python Library for insurance, pensions, and investment analytics',

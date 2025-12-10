@@ -42,7 +42,7 @@ pip install actuneo
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/actuneo.git
+git clone https://github.com/ShannonT20/ACTUNEO.git
 cd actuneo
 pip install -e .
 ```
@@ -137,7 +137,7 @@ We welcome contributions from the actuarial community, especially from African a
 ### Development Setup
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/yourusername/actuneo.git`
+2. Clone your fork: `git clone https://github.com/ShannonT20/ACTUNEO.git`
 3. Create a virtual environment: `python -m venv venv`
 4. Activate the environment: `venv\Scripts\activate` (Windows) or `source venv/bin/activate` (Unix)
 5. Install development dependencies: `pip install -e ".[dev]"`
@@ -210,7 +210,7 @@ If you use ACTUNEO in your research or work, please cite:
 @software{sikadi_actuneo_2025,
   author = {Sikadi, Shannon Tafadzwa},
   title = {ACTUNEO: African Actuarial Python Library},
-  url = {https://github.com/yourusername/actuneo},
+  url = {https://github.com/ShannonT20/ACTUNEO},
   year = {2025}
 }
 ```
