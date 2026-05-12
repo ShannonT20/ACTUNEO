@@ -1,4 +1,4 @@
-# ACTUNEO: Compherensive Actuarial Python Library
+# ACTUNEO: Comprehensive Actuarial Python Library
 
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Documentation Status](https://readthedocs.org/projects/actuneo/badge/?version=latest)](https://actuneo.readthedocs.io/en/latest/?badge=latest)
@@ -12,24 +12,27 @@ ACTUNEO is an open-source, community-driven actuarial Python library that empowe
 
 ## Features
 
-### Core Modules
+### Implemented Modules
 
-- **mortality**: Mortality tables, survival functions, graduation, and mortality improvement models
+- **mortality**: Mortality tables and survival functions
+- **finance**: Interest theory, yield curve construction/interpolation, duration, and convexity
 - **life**: Life assurance, annuities, reserves, and premium calculations
+
+### In Development (Scaffolding Present)
+
 - **pensions**: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
-- **ifrs17**: Measurement models (GMM, VFA, PAA), CSM, risk adjustment, discounting
+- **ifrs17**: Insurance contract measurement models (GMM, VFA, PAA), CSM, risk adjustment, discounting
 - **loss_reserving**: Chain-ladder, Bornhuetter-Ferguson, and stochastic reserving models
-- **finance**: Interest theory, yield curve construction, duration, and convexity measures
 - **macro_africa**: Country-specific economic data connectors (inflation, GDP, currency exchange)
 - **simulation**: Monte Carlo simulations for stochastic actuarial models
-- **utils**: Excel/CSV input-output functions, validation, and reporting
+- **utils**: Data input-output helpers, validation, and reporting utilities
 
 ### African Market Focus
 
-- **Localized Data Support**: Includes mortality, inflation, and interest rate tables calibrated to African and Zimbabwean markets
-- **Regulatory Alignment**: Built-in parameters for regulatory reporting (e.g., IPEC Zimbabwe, PASA, SAM)
-- **Currency Handling**: Supports multi-currency modeling (USD, ZWL, Rand, etc.) with inflation-adjusted projections
-- **Socioeconomic Context**: Incorporates assumptions relevant to informal sector, microinsurance, and low-coverage environments
+- **Localized Assumptions (Roadmap)**: Support for market-specific mortality, inflation, and interest rate tables
+- **Regulatory Alignment (Roadmap)**: Extensible templates for regulatory reporting (e.g., IPEC Zimbabwe, PASA, SAM)
+- **Currency Handling (Roadmap)**: Multi-currency modelling (USD, ZWL, Rand, etc.) with inflation-adjusted projections
+- **Socioeconomic Context (Roadmap)**: Assumptions relevant to informal sector, microinsurance, and low-coverage environments
 
 ## Installation
 
@@ -43,7 +46,7 @@ pip install actuneo
 
 ```bash
 git clone https://github.com/ShannonT20/ACTUNEO.git
-cd actuneo
+cd ACTUNEO
 pip install -e .
 ```
 
@@ -168,8 +171,8 @@ We welcome contributions from the actuarial community, especially from African a
 - [x] Mortality tables and survival functions
 - [x] Financial calculations (interest, yield curves)
 - [x] Life assurance and annuity calculations
-- [ ] Unit testing framework
-- [ ] Documentation setup
+- [x] Unit testing framework
+- [x] Documentation setup
 
 ### Phase 2: Expansion
 - [ ] Pension calculations

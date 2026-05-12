@@ -18,15 +18,17 @@ An open-source, community-driven actuarial Python library that empowers African 
 Zimbabwean actuaries to perform core actuarial, financial, and statistical computations.
 
 Modules:
-- mortality: Mortality tables, survival functions, graduation, and mortality improvement models
+- mortality: Mortality tables and survival functions
+- finance: Interest theory, yield curve construction/interpolation, duration, and convexity measures
 - life: Life assurance, annuities, reserves, and premium calculations
+
+Planned modules (under development):
 - pensions: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
-- ifrs17: Measurement models (GMM, VFA, PAA), CSM, risk adjustment, discounting
+- ifrs17: Insurance contract measurement models (GMM, VFA, PAA), CSM, risk adjustment, discounting
 - loss_reserving: Chain-ladder, Bornhuetter-Ferguson, and stochastic reserving models
-- finance: Interest theory, yield curve construction, duration, and convexity measures
 - macro_africa: Country-specific economic data connectors (inflation, GDP, currency exchange)
 - simulation: Monte Carlo simulations for stochastic actuarial models
-- utils: Excel/CSV input-output functions, validation, and reporting
+- utils: Data input-output helpers, validation, and reporting utilities
 '''
 
 setup(

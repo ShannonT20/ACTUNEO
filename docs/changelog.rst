@@ -3,6 +3,25 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
+Version 0.1.2 (2026-05-12)
+--------------------------
+
+Added
+~~~~~
+
+* Added JOSS submission materials (paper.md and paper.bib)
+
+Changed
+~~~~~~~
+
+* Clarified public-facing descriptions to distinguish implemented modules from planned modules
+* Corrected source installation instructions in README
+
+Fixed
+~~~~~
+
+* Fixed a typo in the project title in README
+
 Version 0.1.1 (2025-01-10)
 --------------------------
 
