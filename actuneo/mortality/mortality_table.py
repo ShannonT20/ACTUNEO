@@ -7,7 +7,8 @@ including loading, manipulation, and basic calculations.
 
 import numpy as np
 import pandas as pd
-from typing import Union, Dict, List, Optional
+import os
+from typing import Union, Dict, List, Optional, Tuple
 
 
 class MortalityTable:
@@ -32,15 +33,30 @@ class MortalityTable:
             name: Name/description of the mortality table
             metadata: Additional metadata about the table
         """
-        self.ages = np.array(ages, dtype=int)
-        self.qx = np.array(qx, dtype=float)
+        ages_arr = np.array(ages, dtype=int)
+        qx_arr = np.array(qx, dtype=float)
+
+        if ages_arr.ndim != 1 or qx_arr.ndim != 1:
+            raise ValueError("ages and qx must be 1-dimensional")
+
+        if len(ages_arr) != len(qx_arr):
+            raise ValueError("ages and qx must have the same length")
+
+        sort_idx = np.argsort(ages_arr)
+        ages_arr = ages_arr[sort_idx]
+        qx_arr = qx_arr[sort_idx]
+
+        unique_ages, counts = np.unique(ages_arr, return_counts=True)
+        if np.any(counts > 1):
+            duplicate_ages = unique_ages[counts > 1].tolist()
+            raise ValueError(f"ages must be unique. Duplicate ages found: {duplicate_ages}")
+
+        self.ages = ages_arr
+        self.qx = qx_arr
         self.name = name
         self.metadata = metadata or {}
 
         # Validate inputs
-        if len(self.ages) != len(self.qx):
-            raise ValueError("ages and qx must have the same length")
-
         if not np.all((self.qx >= 0) & (self.qx <= 1)):
             raise ValueError("All qx values must be between 0 and 1")
 
@@ -59,7 +75,8 @@ class MortalityTable:
                       df: pd.DataFrame,
                       age_col: str = 'age',
                       qx_col: str = 'qx',
-                      name: str = "DataFrame Table") -> 'MortalityTable':
+                      name: str = "DataFrame Table",
+                      metadata: Optional[Dict] = None) -> 'MortalityTable':
         """
         Create a MortalityTable from a pandas DataFrame.
 
@@ -74,14 +91,15 @@ class MortalityTable:
         """
         ages = df[age_col].values
         qx = df[qx_col].values
-        return cls(ages, qx, name)
+        return cls(ages, qx, name, metadata=metadata)
 
     @classmethod
     def from_csv(cls,
                 filepath: str,
                 age_col: str = 'age',
                 qx_col: str = 'qx',
-                name: Optional[str] = None) -> 'MortalityTable':
+                name: Optional[str] = None,
+                metadata: Optional[Dict] = None) -> 'MortalityTable':
         """
         Create a MortalityTable from a CSV file.
 
@@ -95,8 +113,11 @@ class MortalityTable:
             MortalityTable instance
         """
         df = pd.read_csv(filepath)
-        table_name = name or filepath.split('/')[-1].split('.')[0]
-        return cls.from_dataframe(df, age_col, qx_col, table_name)
+        table_name = name or os.path.splitext(os.path.basename(filepath))[0]
+        return cls.from_dataframe(df, age_col, qx_col, table_name, metadata=metadata)
+
+    def to_dataframe(self, age_col: str = "age", qx_col: str = "qx") -> pd.DataFrame:
+        return pd.DataFrame({age_col: self.ages, qx_col: self.qx})
 
     def get_qx(self, age: Union[int, List[int]]) -> Union[float, np.ndarray]:
         """
