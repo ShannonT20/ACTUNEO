@@ -90,9 +90,19 @@ class TestSurvivalFunctions:
         assert sf.i == 0.05
         assert sf.v == 1 / 1.05
 
+    def test_invalid_interest_rate(self, sample_mortality_table):
+        with pytest.raises(TypeError):
+            SurvivalFunctions(sample_mortality_table, interest_rate="0.05")
+
+        with pytest.raises(TypeError):
+            SurvivalFunctions(sample_mortality_table, interest_rate=True)
+
+        with pytest.raises(ValueError):
+            SurvivalFunctions(sample_mortality_table, interest_rate=-1.0)
+
     def test_npx(self, sample_mortality_table):
         """Test n-year survival probability."""
-        sf = SurvivalFunctions(sample_mortality_table)
+        sf = SurvivalFunctions(sample_mortality_table, interest_rate=0.05)
 
         # Test basic survival
         p1 = sf.npx(30, 1)
@@ -109,7 +119,7 @@ class TestSurvivalFunctions:
 
     def test_nqx(self, sample_mortality_table):
         """Test n-year mortality probability."""
-        sf = SurvivalFunctions(sample_mortality_table)
+        sf = SurvivalFunctions(sample_mortality_table, interest_rate=0.05)
 
         q5 = sf.nqx(30, 5)
         p5 = sf.npx(30, 5)
@@ -117,7 +127,7 @@ class TestSurvivalFunctions:
 
     def test_tpx(self, sample_mortality_table):
         """Test fractional year survival."""
-        sf = SurvivalFunctions(sample_mortality_table)
+        sf = SurvivalFunctions(sample_mortality_table, interest_rate=0.05)
 
         # Test fractional survival
         p_half = sf.tpx(30, 0.5)
@@ -129,7 +139,7 @@ class TestSurvivalFunctions:
 
     def test_annuity_calculations(self, sample_mortality_table):
         """Test annuity calculations."""
-        sf = SurvivalFunctions(sample_mortality_table)
+        sf = SurvivalFunctions(sample_mortality_table, interest_rate=0.05)
 
         # Immediate annuity
         imm_ann = sf.annuity_immediate(30, n=10)
@@ -145,7 +155,7 @@ class TestSurvivalFunctions:
 
     def test_assurance_calculations(self, sample_mortality_table):
         """Test assurance calculations."""
-        sf = SurvivalFunctions(sample_mortality_table)
+        sf = SurvivalFunctions(sample_mortality_table, interest_rate=0.05)
 
         # Whole life assurance
         whole_ass = sf.assurance(30)

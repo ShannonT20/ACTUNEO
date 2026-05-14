@@ -48,7 +48,7 @@ Survival Probabilities
 
    from actuneo.mortality import SurvivalFunctions
 
-   sf = SurvivalFunctions(mt)
+   sf = SurvivalFunctions(mt, interest_rate=0.05)
    
    # 20-year survival probability from age 30
    survival_prob = sf.npx(30, 20)

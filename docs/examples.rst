@@ -30,7 +30,7 @@ Example 1: Complete Mortality Analysis
    print(f"Life expectancy at age 65: {mt.life_expectancy(65):.2f} years")
    
    # Plot survival curve
-   sf = SurvivalFunctions(mt)
+   sf = SurvivalFunctions(mt, interest_rate=0.05)
    ages_plot = np.arange(0, 101)
    survival_probs = [sf.npx(0, age) for age in ages_plot]
    

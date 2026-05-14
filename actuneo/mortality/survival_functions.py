@@ -6,7 +6,8 @@ temporary and permanent life functions, actuarial present values, etc.
 """
 
 import numpy as np
-from typing import Union, Optional
+from numbers import Real
+from typing import Optional
 from .mortality_table import MortalityTable
 
 
@@ -16,17 +17,22 @@ class SurvivalFunctions:
     and life contingencies based on mortality tables.
     """
 
-    def __init__(self, mortality_table: MortalityTable, interest_rate: float = 0.05):
+    def __init__(self, mortality_table: MortalityTable, interest_rate: float):
         """
         Initialize SurvivalFunctions with a mortality table and interest rate.
 
         Args:
             mortality_table: MortalityTable instance
-            interest_rate: Annual interest rate for discounting (default 5%)
+            interest_rate: Annual interest rate for discounting (e.g. 0.10 for 10%)
         """
+        if isinstance(interest_rate, bool) or not isinstance(interest_rate, Real):
+            raise TypeError("interest_rate must be a real number (e.g. 0.10 for 10%).")
+        if interest_rate <= -1:
+            raise ValueError("interest_rate must be greater than -1.0.")
+
         self.mt = mortality_table
-        self.i = interest_rate
-        self.v = 1 / (1 + interest_rate)  # Discount factor
+        self.i = float(interest_rate)
+        self.v = 1 / (1 + self.i)  # Discount factor
 
     def npx(self, x: int, n: int) -> float:
         """

@@ -91,7 +91,7 @@ Mortality Analysis
    print(f"Life expectancy at age 30: {le:.1f} years")
 
    # Survival functions
-   sf = SurvivalFunctions(mt)
+   sf = SurvivalFunctions(mt, interest_rate=0.05)
    survival_prob = sf.npx(30, 20)  # 20-year survival probability
    print(f"20-year survival probability: {survival_prob:.3f}")
 
