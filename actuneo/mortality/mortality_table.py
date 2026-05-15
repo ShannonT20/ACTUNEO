@@ -114,10 +114,13 @@ class MortalityTable:
         else:
             self.Tx_values = np.cumsum(self.Lx_values[::-1])[::-1]
 
+        computed_ex = np.where(self.lx_values > 0, self.Tx_values / self.lx_values, 0.0)
         if "ex" in self._table_columns:
             self.ex_values = self._table_columns["ex"].astype(float)
+            # CSV exports often omit ex; fill from Tx/lx (same as Zimbabwe 2023 tables in Excel)
+            self.ex_values = np.where(np.isnan(self.ex_values), computed_ex, self.ex_values)
         else:
-            self.ex_values = np.where(self.lx_values > 0, self.Tx_values / self.lx_values, 0.0)
+            self.ex_values = computed_ex
 
         self.mx_values = self._table_columns.get("mx")
 
@@ -188,10 +191,16 @@ class MortalityTable:
         }
         if table not in mapping:
             raise ValueError(f"Unknown Zimbabwe 2023 table '{table}'. Available: {sorted(mapping.keys())}")
-        csv_rel = f\"data/zimbabwe_2023/{mapping[table]}\"
+        csv_rel = f"data/zimbabwe_2023/{mapping[table]}"
         csv_path = resources.files("actuneo.mortality") / csv_rel
         with resources.as_file(csv_path) as p:
-            return cls.from_csv(str(p), age_col="age", qx_col="qx", name=f\"Zimbabwe 2023 - {table}\", metadata={\"country\": \"Zimbabwe\", \"year\": 2023})
+            return cls.from_csv(
+                str(p),
+                age_col="age",
+                qx_col="qx",
+                name=f"Zimbabwe 2023 - {table}",
+                metadata={"country": "Zimbabwe", "year": 2023},
+            )
 
     def to_dataframe(self) -> pd.DataFrame:
         df = pd.DataFrame(
