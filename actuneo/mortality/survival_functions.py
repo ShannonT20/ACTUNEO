@@ -57,8 +57,8 @@ class SurvivalFunctions:
                 return 0.0
             last_idx = last_age_idx[-1]
             remaining_years = x + n - self.mt.ages[last_idx]
-            px_remaining = self.mt.px[last_idx] ** remaining_years
-            return self.mt.lx[last_idx] * px_remaining / self.mt.lx[np.where(self.mt.ages == x)[0][0]]
+            px_remaining = self.mt.px_values[last_idx] ** remaining_years
+            return self.mt.lx_values[last_idx] * px_remaining / self.mt.lx_values[np.where(self.mt.ages == x)[0][0]]
 
         # Find indices for ages x to x+n
         start_idx = np.where(self.mt.ages == x)[0]
@@ -71,7 +71,7 @@ class SurvivalFunctions:
         end_idx = end_idx[0]
 
         # Calculate cumulative survival probability
-        survival_prob = np.prod(self.mt.px[start_idx:end_idx])
+        survival_prob = np.prod(self.mt.px_values[start_idx:end_idx])
         return float(survival_prob)
 
     def nqx(self, x: int, n: int) -> float:

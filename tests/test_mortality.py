@@ -14,8 +14,8 @@ class TestMortalityTable:
         """Test basic initialization."""
         mt = sample_mortality_table
         assert mt.name == "Test Table"
-        assert len(mt.ages) == len(mt.qx)
-        assert np.all(mt.qx >= 0) and np.all(mt.qx <= 1)
+        assert len(mt.ages) == len(mt.qx_values)
+        assert np.all(mt.qx_values >= 0) and np.all(mt.qx_values <= 1)
 
     def test_invalid_inputs(self):
         """Test error handling for invalid inputs."""
@@ -73,7 +73,7 @@ class TestMortalityTable:
         mt = sample_mortality_table
         df = pd.DataFrame({
             'age': mt.ages[:10],
-            'qx': mt.qx[:10]
+            'qx': mt.qx_values[:10]
         })
 
         mt_from_df = MortalityTable.from_dataframe(df)
