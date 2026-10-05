@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "actuneo"
-version = "0.1.2"
+version = "0.2.0"
 description = "African Actuarial Python Library for insurance, pensions, and investment analytics"
 readme = "README.md"
 license = {text = "MIT"}
@@ -19,6 +19,8 @@ keywords = [
     "mortality",
     "africa",
     "zimbabwe",
+    "loss reserving",
+    "chain ladder",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -26,19 +28,18 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Office/Business :: Financial :: Accounting",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.21.0",
     "pandas>=1.3.0",
     "scipy>=1.7.0",
-    "matplotlib>=3.4.0",
 ]
 
 [project.optional-dependencies]
@@ -55,6 +56,7 @@ ml = [
     "statsmodels>=0.12.0",
 ]
 viz = [
+    "matplotlib>=3.4.0",
     "plotly>=5.0.0",
     "seaborn>=0.11.0",
 ]
@@ -65,12 +67,15 @@ Documentation = "https://actuneo.readthedocs.io/"
 Repository = "https://github.com/ShannonT20/ACTUNEO"
 "Bug Tracker" = "https://github.com/ShannonT20/ACTUNEO/issues"
 
-[tool.setuptools]
-packages = {find = {}}
+[tool.setuptools.packages.find]
+include = ["actuneo*"]
+
+[tool.setuptools.package-data]
+"actuneo.mortality" = ["data/**/*.csv"]
 
 [tool.black]
 line-length = 100
-target-version = ['py38']
+target-version = ['py39']
 include = '\.pyi?$'
 extend-exclude = '''
 /(

@@ -2,6 +2,7 @@ include README.md
 include LICENSE
 include requirements.txt
 include pyproject.toml
+recursive-include actuneo *.csv
 recursive-include docs *.md
 recursive-include docs *.rst
 global-exclude *.pyc
