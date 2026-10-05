@@ -272,6 +272,74 @@ Uncertainty of the reserve, from Mack's formula or by simulation:
    boot = BootChainLadder(triangle, n_simulations=2000, seed=1)
    print(boot.summary(quantiles=[0.75, 0.995]).round(0))
 
+Working with Real Data
+----------------------
+
+Claims usually arrive as a listing, one row per payment. ``from_transactions``
+builds the triangle from the dates, on a yearly, quarterly or monthly basis:
+
+.. code-block:: python
+
+   import pandas as pd
+   from actuneo.loss_reserving import Triangle, ChainLadder
+
+   listing = pd.DataFrame({
+       "loss_date": ["2021-03-10", "2021-03-10", "2021-11-02", "2022-06-30",
+                     "2022-06-30", "2023-01-15"],
+       "paid_date": ["2021-05-01", "2022-02-01", "2023-08-20", "2022-09-09",
+                     "2023-03-03", "2023-12-31"],
+       "amount":    [60.0, 50.0, 15.0, 110.0, 66.0, 120.0],
+   })
+
+   tri = Triangle.from_transactions(listing, origin_date="loss_date",
+                                    transaction_date="paid_date", value="amount",
+                                    valuation_date="2023-12-31")
+   print(tri)
+
+   # Accident years developed quarterly
+   quarterly = Triangle.from_transactions(listing, "loss_date", "paid_date", "amount",
+                                          development_grain="Q")
+   print(quarterly.shape)
+
+Future payments, discounting and a loss ratio estimated from the data:
+
+.. code-block:: python
+
+   from actuneo.finance import YieldCurve
+   from actuneo.loss_reserving import CapeCod, MackChainLadder, load_raa
+
+   raa = load_raa()
+   mack = MackChainLadder(raa, est_sigma="mack")
+
+   print(mack.cash_flows().round(0))                  # expected payments by future year
+   print(f"Undiscounted reserve: {mack.reserve():,.0f}")
+   print(f"Discounted at 8%:     {mack.discounted_reserve(0.08):,.0f}")
+
+   curve = YieldCurve([1, 3, 5, 10], [0.07, 0.08, 0.085, 0.09])
+   print(f"Discounted on a curve: {mack.discounted_reserve(curve):,.0f}")
+
+   # Reserve at a confidence level, assuming a lognormal distribution
+   print(mack.reserve_quantile([0.75, 0.995]).round(0))
+
+   # Diagnostics: standardised residuals should show no pattern
+   print(mack.residuals().round(2))
+
+   # Cape Cod: Bornhuetter-Ferguson with the loss ratio estimated from the triangle
+   cape_cod = CapeCod(raa, premium=[25000] * 10)
+   print(f"Cape Cod loss ratio {cape_cod.loss_ratio:.1%}, reserve {cape_cod.reserve():,.0f}")
+
+Plots need matplotlib (``pip install actuneo[viz]``) and Excel output needs
+openpyxl (``pip install actuneo[excel]``):
+
+.. code-block:: py
+
+   raa.plot()                      # development of each origin year
+   mack.plot()                     # latest claims and reserve with error bars
+   mack.plot_residuals()           # residuals by development step
+   BootChainLadder(raa, seed=1).plot()   # histogram of the simulated reserve
+
+   mack.to_excel("raa_reserve.xlsx")     # summary, triangle, projection, factors, cash flows
+
 Next Steps
 ----------
 

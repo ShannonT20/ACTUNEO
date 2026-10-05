@@ -11,6 +11,7 @@ ACTUNEO requires Python 3.9 or higher and has the following dependencies:
 * scipy >= 1.7.0
 
 Plotting needs matplotlib, installed with ``pip install actuneo[viz]``.
+Excel output needs openpyxl, installed with ``pip install actuneo[excel]``.
 
 Installing from PyPI
 --------------------

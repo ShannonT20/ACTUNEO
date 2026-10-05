@@ -3,6 +3,33 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
+Unreleased
+----------
+
+Added
+~~~~~
+
+* ``Triangle.from_transactions``: build a triangle from a listing of dated payments or
+  claims, with yearly, quarterly or monthly origin and development periods
+* ``cash_flows``, ``future_incremental`` and ``discounted_reserve`` (flat rate or yield curve)
+  on every projection method
+* ``CapeCod`` method
+* ``factors=`` on ``ChainLadder``, ``BornhuetterFerguson`` and ``InflationAdjustedChainLadder``
+  to use selected development factors, and ``tail=`` on ``InflationAdjustedChainLadder``
+* ``MackChainLadder``: ``residuals``, ``reserve_quantile`` (lognormal or normal) and the
+  ``mse_method="independence"`` estimation error of Buchwalder et al. (2006)
+* ``to_excel`` output and plots of triangles, reserves, residuals and bootstrap results
+* ``InflationAdjustedChainLadder(development_per_origin=...)`` for development periods
+  shorter than the origin periods
+
+Changed
+~~~~~~~
+
+* ``MackChainLadder`` skips link ratios that start from zero claims instead of rejecting
+  the triangle; ``BootChainLadder`` handles fitted values of zero
+* The Mack sigma extrapolation and tail uncertainty were compared with the source of the
+  R ChainLadder package and follow the same algorithm
+
 Version 0.3.0 (2026-10-05)
 --------------------------
 

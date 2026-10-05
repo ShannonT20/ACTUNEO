@@ -44,6 +44,14 @@ BornhuetterFerguson
    :show-inheritance:
    :special-members: __init__
 
+CapeCod
+-------
+
+.. autoclass:: actuneo.loss_reserving.CapeCod
+   :members:
+   :show-inheritance:
+   :special-members: __init__
+
 MackChainLadder
 ---------------
 
@@ -74,6 +82,6 @@ Example Triangles
 Planned Features
 ----------------
 
-* Cape Cod and Munich chain-ladder methods
-* Discounted reserves
-* Residual and development plots
+* Munich chain-ladder
+* One-year reserve risk (Merz-Wuthrich)
+* Triangles with missing cells
