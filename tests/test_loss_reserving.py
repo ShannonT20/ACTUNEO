@@ -256,7 +256,14 @@ class TestMackChainLadder:
             np.sum(c[:9, 0] * c[:9, 1]) / np.sum(c[:9, 0] ** 2)
         )
 
-    def test_needs_positive_claims(self):
-        tri = Triangle([[0, 150, 165], [110, 176, np.nan], [120, np.nan, np.nan]])
-        with pytest.raises(ValueError, match="positive"):
-            MackChainLadder(tri)
+    def test_zero_and_negative_claims(self):
+        """A zero cell gives no link ratio and is skipped; negatives are rejected."""
+        zero = Triangle([[0, 150, 165, 170], [110, 176, 190, np.nan],
+                         [120, 180, np.nan, np.nan], [130, np.nan, np.nan, np.nan]])
+        mack = MackChainLadder(zero, est_sigma="mack")
+        assert mack.factors.iloc[0] == pytest.approx((176 + 180) / (110 + 120))
+        assert np.isfinite(mack.total_mack_se)
+
+        negative = Triangle([[-5, 150, 165], [110, 176, np.nan], [120, np.nan, np.nan]])
+        with pytest.raises(ValueError, match="negative"):
+            MackChainLadder(negative)

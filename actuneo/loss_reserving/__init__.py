@@ -11,9 +11,11 @@ This module provides tools for:
 - Basic chain-ladder projection, with model checks and tail factors
 - Inflation-adjusted chain-ladder
 - Average cost per claim method and grossing-up factors
-- Bornhuetter-Ferguson method
+- Bornhuetter-Ferguson and Cape Cod methods
 - Mack's distribution-free standard error of the reserve
 - Bootstrap of the chain-ladder for the full reserve distribution
+- Future cash flows, discounted reserves, plots and Excel output
+- Triangles built directly from a listing of dated claim transactions
 """
 
 from .triangle import Triangle
@@ -21,6 +23,7 @@ from .chain_ladder import ChainLadder, MackChainLadder, estimate_tail_factor
 from .inflation import InflationAdjustedChainLadder
 from .average_cost import AverageCostPerClaim, grossing_up
 from .bornhuetter_ferguson import BornhuetterFerguson
+from .cape_cod import CapeCod
 from .bootstrap import BootChainLadder
 from .datasets import load_raa, load_genins
 
@@ -31,6 +34,7 @@ __all__ = [
     'AverageCostPerClaim',
     'grossing_up',
     'BornhuetterFerguson',
+    'CapeCod',
     'MackChainLadder',
     'BootChainLadder',
     'estimate_tail_factor',
