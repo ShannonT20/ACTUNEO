@@ -6,8 +6,7 @@ including spot rates, forward rates, and various interpolation methods.
 """
 
 import numpy as np
-from typing import List, Union, Optional, Dict, Callable
-import matplotlib.pyplot as plt
+from typing import List, Union, Dict
 
 
 class YieldCurve:
@@ -43,6 +42,9 @@ class YieldCurve:
         if len(self.maturities) != len(self.yields):
             raise ValueError("maturities and yields must have the same length")
 
+        if len(self.maturities) == 0:
+            raise ValueError("At least one maturity is required")
+
         if not np.all(self.maturities > 0):
             raise ValueError("All maturities must be positive")
 
@@ -66,6 +68,8 @@ class YieldCurve:
     def _linear_interpolation(self, t: float) -> float:
         """Linear interpolation for yields."""
         if t <= self.maturities[0]:
+            return self.yields[0]
+        elif len(self.maturities) == 1:
             return self.yields[0]
         elif t >= self.maturities[-1]:
             # Linear extrapolation
@@ -186,6 +190,13 @@ class YieldCurve:
             show_forward_rates: Whether to show forward rate curve
             **kwargs: Additional arguments for plotting
         """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError as exc:
+            raise ImportError(
+                "Plotting requires matplotlib. Install it with: pip install actuneo[viz]"
+            ) from exc
+
         plt.figure(figsize=(10, 6))
 
         # Plot yield curve
@@ -239,7 +250,11 @@ class YieldCurve:
                       par_rates: List[float],
                       coupon_freq: int = 2) -> 'YieldCurve':
         """
-        Create YieldCurve from par bond yields.
+        Create YieldCurve from par bond yields by bootstrapping.
+
+        Par yields are quoted as nominal annual rates payable ``coupon_freq``
+        times a year. The resulting curve holds annual effective zero rates
+        at the quoted maturities.
 
         Args:
             maturities: Time to maturity
@@ -249,9 +264,27 @@ class YieldCurve:
         Returns:
             YieldCurve instance
         """
-        # For simplicity, assume par rates are approximately equal to yields
-        # In practice, this would require bootstrapping
-        return cls(maturities, par_rates)
+        maturities = np.asarray(maturities, dtype=float)
+        par_rates = np.asarray(par_rates, dtype=float)
+        order = np.argsort(maturities)
+        maturities, par_rates = maturities[order], par_rates[order]
+
+        # Par rates on every coupon date, interpolated between quoted maturities
+        n_coupons = int(round(maturities[-1] * coupon_freq))
+        grid = np.arange(1, n_coupons + 1) / coupon_freq
+        par_grid = np.interp(grid, maturities, par_rates)
+
+        # A par bond prices at 1: c * sum(DF_1..DF_k) + DF_k = 1
+        discount_factors = np.zeros(n_coupons)
+        running_sum = 0.0
+        for k in range(n_coupons):
+            coupon = par_grid[k] / coupon_freq
+            discount_factors[k] = (1 - coupon * running_sum) / (1 + coupon)
+            running_sum += discount_factors[k]
+
+        zero_grid = discount_factors ** (-1 / grid) - 1
+        zero_rates = np.interp(maturities, grid, zero_grid)
+        return cls(maturities, zero_rates)
 
     def __repr__(self) -> str:
         return f"YieldCurve(maturities={len(self.maturities)}, range=({self.maturities[0]:.1f}-{self.maturities[-1]:.1f} years), method='{self.interpolation_method}')"

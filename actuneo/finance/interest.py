@@ -23,10 +23,17 @@ class InterestTheory:
             interest_rate: Annual interest rate (decimal)
             compounding_frequency: Compounding frequency per year (1=annual, 2=semi-annual, etc.)
         """
+        if interest_rate <= -1:
+            raise ValueError("interest_rate must be greater than -1.0")
+        if compounding_frequency < 1:
+            raise ValueError("compounding_frequency must be at least 1")
+
         self.i = interest_rate
         self.m = compounding_frequency
         self.i_m = interest_rate / compounding_frequency  # Periodic interest rate
         self.v = 1 / (1 + interest_rate)  # Annual discount factor
+        self.d = interest_rate / (1 + interest_rate)  # Annual effective rate of discount
+        self.delta = float(np.log1p(interest_rate))  # Force of interest
 
     def future_value(self,
                     present_value: float,
@@ -199,6 +206,47 @@ class InterestTheory:
             Nominal annual rate
         """
         return compounding_freq * ((1 + effective_rate) ** (1 / compounding_freq) - 1)
+
+    def discount_rate(self, effective_rate: Optional[float] = None) -> float:
+        """
+        Convert an effective annual interest rate to the effective rate of discount d.
+
+        Args:
+            effective_rate: Effective annual interest rate (defaults to the instance rate)
+
+        Returns:
+            d = i / (1 + i)
+        """
+        i = effective_rate if effective_rate is not None else self.i
+        return i / (1 + i)
+
+    def force_of_interest(self, effective_rate: Optional[float] = None) -> float:
+        """
+        Convert an effective annual interest rate to the force of interest.
+
+        Args:
+            effective_rate: Effective annual interest rate (defaults to the instance rate)
+
+        Returns:
+            delta = ln(1 + i)
+        """
+        i = effective_rate if effective_rate is not None else self.i
+        return float(np.log1p(i))
+
+    def nominal_discount_rate(self,
+                              effective_rate: float,
+                              compounding_freq: int) -> float:
+        """
+        Convert effective annual interest rate to a nominal rate of discount d^(m).
+
+        Args:
+            effective_rate: Effective annual interest rate
+            compounding_freq: Compounding frequency per year
+
+        Returns:
+            Nominal annual rate of discount convertible m times a year
+        """
+        return compounding_freq * (1 - (1 + effective_rate) ** (-1 / compounding_freq))
 
     def real_interest_rate(self,
                           nominal_rate: float,

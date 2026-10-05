@@ -6,7 +6,7 @@ for bonds and fixed income securities.
 """
 
 import numpy as np
-from typing import List, Union, Optional
+from typing import List, Optional
 from .yield_curve import YieldCurve
 
 

@@ -203,3 +203,39 @@ class TestDurationConvexity:
         convexity_effect = 0.5 * convexity * yield_change ** 2 * current_price
 
         assert abs(price_change - (duration_effect + convexity_effect)) < 1e-10
+
+
+class TestParBootstrap:
+    """Bootstrapping zero rates from par yields."""
+
+    def test_flat_par_curve_gives_flat_zero_curve(self):
+        curve = YieldCurve.from_par_rates([1, 2, 5, 10], [0.06] * 4, coupon_freq=2)
+        np.testing.assert_allclose(curve.yields, 1.03 ** 2 - 1)
+
+    def test_par_bonds_reprice_to_par(self):
+        maturities, par_rates = [1, 2, 3, 4, 5], [0.03, 0.035, 0.04, 0.043, 0.045]
+        curve = YieldCurve.from_par_rates(maturities, par_rates, coupon_freq=1)
+        for maturity, coupon in zip(maturities, par_rates):
+            times = np.arange(1, maturity + 1)
+            price = sum(coupon * curve.get_discount_factor(t) for t in times)
+            price += curve.get_discount_factor(maturity)
+            assert price == pytest.approx(1.0)
+        # Upward sloping par curve: zero rates lie above par rates
+        assert curve.yields[-1] > par_rates[-1]
+
+
+class TestRateConversions:
+    """Equivalent rates of interest and discount."""
+
+    def test_equivalent_rates(self):
+        it = InterestTheory(0.05)
+        assert it.discount_rate() == pytest.approx(0.05 / 1.05)
+        assert it.force_of_interest() == pytest.approx(np.log(1.05))
+        assert it.d == pytest.approx(1 - it.v)
+        d12 = it.nominal_discount_rate(0.05, 12)
+        assert (1 - d12 / 12) ** -12 == pytest.approx(1.05)
+        assert it.discount_rate() < d12 < it.force_of_interest() < it.nominal_rate(0.05, 12) < 0.05
+
+    def test_invalid_rate(self):
+        with pytest.raises(ValueError):
+            InterestTheory(-1.0)
