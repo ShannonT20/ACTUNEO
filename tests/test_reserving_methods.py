@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from actuneo.loss_reserving import (
     Triangle, ChainLadder, MackChainLadder, InflationAdjustedChainLadder,
-    AverageCostPerClaim, grossing_up, estimate_tail_factor, load_raa, load_genins,
+    AverageCostPerClaim, BornhuetterFerguson, grossing_up, estimate_tail_factor, load_raa, load_genins,
 )
 
 N = np.nan
@@ -298,3 +298,73 @@ class TestAverageCostPerClaim:
             AverageCostPerClaim(incurred, reported_numbers, method="other")
         with pytest.raises(TypeError):
             AverageCostPerClaim(incurred, [[1]])
+
+
+class TestBornhuetterFerguson:
+    """Bornhuetter-Ferguson method."""
+
+    @pytest.fixture
+    def bf_triangle(self):
+        return Triangle(
+            [[2866, 3334, 3503, 3624, 3719, 3717],
+             [3359, 3889, 4033, 4231, 4319, N],
+             [3848, 4503, 4779, 4946, N, N],
+             [4673, 5422, 5676, N, N, N],
+             [5369, 6142, N, N, N, N],
+             [5818, N, N, N, N, N]],
+        )
+
+    PREMIUM = [4486, 5024, 5680, 6590, 7482, 8502]
+
+    def test_published_example(self, bf_triangle):
+        bf = BornhuetterFerguson(bf_triangle, premium=self.PREMIUM, loss_ratio=0.83)
+
+        np.testing.assert_allclose(bf.factors, [1.158, 1.049, 1.039, 1.023, 0.999], atol=6e-4)
+        np.testing.assert_allclose(
+            bf.cdf, [1.290, 1.114, 1.062, 1.022, 0.999, 1.000], atol=1.5e-3
+        )
+        np.testing.assert_allclose(
+            bf.initial_ultimate, [3723, 4170, 4714, 5470, 6210, 7057], atol=0.5
+        )
+        # Published with factors rounded to 3 decimals: emerging liabilities
+        # 0, -4, 104, 317, 633, 1,588 and a total ultimate of 33,256
+        np.testing.assert_allclose(bf.emerging, [0, -4, 104, 317, 633, 1588], atol=10)
+        assert bf.ultimate.sum() == pytest.approx(33256, rel=1e-3)
+        assert bf.reserve(20334) == pytest.approx(12922, rel=2e-3)
+
+    def test_formula(self, bf_triangle):
+        bf = BornhuetterFerguson(bf_triangle, premium=self.PREMIUM, loss_ratio=0.83)
+        f = bf.cdf.to_numpy()[::-1]  # factor to ultimate at each origin's latest period
+        expected = 0.83 * np.array(self.PREMIUM) * (1 - 1 / f)
+        np.testing.assert_allclose(bf.ibnr, expected)
+        np.testing.assert_allclose(bf.ultimate, bf.latest + expected)
+        np.testing.assert_allclose(bf.full_triangle.iloc[:, -1], bf.ultimate)
+
+    def test_second_example(self):
+        tri = Triangle([[473, 620, 690, 715], [512, 660, 750, N],
+                        [611, 700, N, N], [647, N, N, N]], origin=range(2009, 2013))
+        bf = BornhuetterFerguson(tri, premium=[860, 940, 980, 1020], loss_ratio=0.85)
+        np.testing.assert_allclose(bf.factors, [1.2406, 1.1250, 1.0362], atol=5e-5)
+        np.testing.assert_allclose(bf.ultimate, [715, 777.91, 818.42, 914.5], atol=0.05)
+        assert bf.reserve(1942) == pytest.approx(1284, abs=0.5)
+
+    def test_chain_ladder_ultimate_as_initial_estimate(self, bf_triangle):
+        """Feeding the chain-ladder ultimates back in reproduces the chain-ladder."""
+        cl = ChainLadder(bf_triangle)
+        bf = BornhuetterFerguson(bf_triangle, initial_ultimate=cl.ultimate.to_numpy())
+        np.testing.assert_allclose(bf.ultimate, cl.ultimate)
+        np.testing.assert_allclose(bf.chain_ladder_ultimate, cl.ultimate)
+
+    def test_loss_ratio_per_origin(self, bf_triangle):
+        flat = BornhuetterFerguson(bf_triangle, premium=self.PREMIUM, loss_ratio=0.83)
+        each = BornhuetterFerguson(bf_triangle, premium=self.PREMIUM, loss_ratio=[0.83] * 6)
+        np.testing.assert_allclose(each.ultimate, flat.ultimate)
+
+    def test_invalid_inputs(self, bf_triangle):
+        with pytest.raises(ValueError, match="Give either"):
+            BornhuetterFerguson(bf_triangle, premium=self.PREMIUM)
+        with pytest.raises(ValueError, match="Give either"):
+            BornhuetterFerguson(bf_triangle, premium=self.PREMIUM, loss_ratio=0.8,
+                                initial_ultimate=[1] * 6)
+        with pytest.raises(ValueError, match="One value"):
+            BornhuetterFerguson(bf_triangle, premium=[1, 2, 3], loss_ratio=0.8)
