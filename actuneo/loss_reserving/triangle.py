@@ -135,6 +135,105 @@ class Triangle:
         return cls(wide, cumulative=cumulative, name=name)
 
     @classmethod
+    def from_transactions(cls,
+                          df: pd.DataFrame,
+                          origin_date: str,
+                          transaction_date: str,
+                          value: str,
+                          origin_grain: str = "Y",
+                          development_grain: str = "Y",
+                          valuation_date=None,
+                          cumulative: bool = True,
+                          name: str = "Triangle") -> 'Triangle':
+        """
+        Build a triangle from a listing of dated transactions.
+
+        Each row is one movement on a claim, for example a payment with the
+        date of loss and the date of payment, or a claim count of 1 with the
+        date of loss and the date reported. Rows are grouped into origin
+        periods by ``origin_date`` and into development periods by the time
+        from the start of the origin period to ``transaction_date``.
+
+        Periods with no transactions up to the valuation date are zero, so
+        quiet periods and origin periods without claims are handled.
+
+        Args:
+            df: DataFrame with one row per transaction
+            origin_date: Column with the date that fixes the origin period
+                (date of loss, policy inception or reporting date)
+            transaction_date: Column with the date of the transaction
+            value: Column with the amount (or count) of the transaction
+            origin_grain: Length of the origin periods: "Y" (year),
+                "Q" (quarter) or "M" (month)
+            development_grain: Length of the development periods: "Y", "Q"
+                or "M". Must not be longer than the origin periods.
+            valuation_date: Date up to which the data is complete (default:
+                the end of the development period of the latest transaction)
+            cumulative: Return a cumulative triangle (True) or incremental
+            name: Name for the triangle
+
+        Returns:
+            Triangle with origin periods labelled by period (for example
+            "2023" or "2023Q2") and development periods numbered from 1
+        """
+        months = {"Y": 12, "Q": 3, "M": 1}
+        if origin_grain not in months or development_grain not in months:
+            raise ValueError("grains must be 'Y', 'Q' or 'M'")
+        if months[development_grain] > months[origin_grain]:
+            raise ValueError("development periods must not be longer than origin periods")
+        if len(df) == 0:
+            raise ValueError("df has no transactions")
+
+        origin_dates = pd.to_datetime(df[origin_date])
+        transaction_dates = pd.to_datetime(df[transaction_date])
+        if origin_dates.isna().any() or transaction_dates.isna().any():
+            raise ValueError("origin and transaction dates must not be missing")
+
+        def month_number(dates):
+            return dates.dt.year * 12 + dates.dt.month - 1
+
+        origin_len, dev_len = months[origin_grain], months[development_grain]
+        origin_month = month_number(origin_dates)
+        origin_idx = origin_month // origin_len
+        # Development lag counted from the start of the origin period
+        lag = month_number(transaction_dates) // dev_len - (origin_idx * origin_len) // dev_len
+        if (transaction_dates < origin_dates).any() or (lag < 0).any():
+            raise ValueError("a transaction is dated before its origin date")
+
+        if valuation_date is None:
+            valuation_period = int((month_number(transaction_dates) // dev_len).max())
+        else:
+            valuation = pd.Timestamp(valuation_date)
+            valuation_period = (valuation.year * 12 + valuation.month - 1) // dev_len
+            if (month_number(transaction_dates) // dev_len > valuation_period).any():
+                raise ValueError("a transaction is dated after the valuation date")
+
+        # Origin periods run up to the valuation date, with or without claims
+        first = int(origin_idx.min())
+        last = max(int(origin_idx.max()), (valuation_period * dev_len) // origin_len)
+        n_origin = last - first + 1
+        latest_lag = valuation_period - (np.arange(first, last + 1) * origin_len) // dev_len
+        n_dev = int(latest_lag.max()) + 1
+
+        values = np.zeros((n_origin, n_dev))
+        np.add.at(values, (origin_idx.to_numpy() - first, lag.to_numpy()),
+                  df[value].to_numpy(dtype=float))
+        for i in range(n_origin):
+            values[i, latest_lag[i] + 1:] = np.nan
+
+        def label(idx):
+            year, part = divmod(idx * origin_len, 12)
+            if origin_grain == "Y":
+                return str(year)
+            if origin_grain == "Q":
+                return f"{year}Q{part // 3 + 1}"
+            return f"{year}-{part + 1:02d}"
+
+        triangle = cls(values, origin=[label(i) for i in range(first, last + 1)],
+                       development=range(1, n_dev + 1), cumulative=False, name=name)
+        return triangle.to_cumulative() if cumulative else triangle
+
+    @classmethod
     def from_dataframe(cls,
                        df: pd.DataFrame,
                        cumulative: bool = True,
@@ -308,6 +407,21 @@ class Triangle:
     # ------------------------------------------------------------------
     # Display
     # ------------------------------------------------------------------
+    def plot(self, ax=None):
+        """
+        Plot the development of each origin period (needs matplotlib).
+
+        Args:
+            ax: Matplotlib axes to draw on (a new figure if omitted)
+
+        Returns:
+            The matplotlib axes
+        """
+        from ._plotting import plot_development
+        kind = "Cumulative" if self.is_cumulative else "Incremental"
+        return plot_development(self.to_frame(), f"{self.name}: {kind.lower()} development",
+                                f"{kind} claims", ax)
+
     def __repr__(self) -> str:
         kind = "cumulative" if self.is_cumulative else "incremental"
         return (f"Triangle(name='{self.name}', {kind}, "
