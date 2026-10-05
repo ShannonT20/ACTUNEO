@@ -18,11 +18,13 @@ This module provides tools for:
 
 from .triangle import Triangle
 from .chain_ladder import ChainLadder, MackChainLadder, estimate_tail_factor
+from .inflation import InflationAdjustedChainLadder
 from .datasets import load_raa, load_genins
 
 __all__ = [
     'Triangle',
     'ChainLadder',
+    'InflationAdjustedChainLadder',
     'MackChainLadder',
     'estimate_tail_factor',
     'load_raa',

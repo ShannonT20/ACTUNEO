@@ -11,7 +11,8 @@ figures, so they are matched to within that rounding.
 import numpy as np
 import pytest
 from actuneo.loss_reserving import (
-    Triangle, ChainLadder, MackChainLadder, estimate_tail_factor, load_raa, load_genins,
+    Triangle, ChainLadder, MackChainLadder, InflationAdjustedChainLadder,
+    estimate_tail_factor, load_raa, load_genins,
 )
 
 N = np.nan
@@ -201,3 +202,51 @@ class TestMackTail:
     def test_tail_below_one_needs_inputs(self):
         with pytest.raises(ValueError, match="supply both"):
             MackChainLadder(load_raa(), tail=0.99)
+
+
+class TestInflationAdjustedChainLadder:
+    """Inflation-adjusted chain-ladder on the paid triangle."""
+
+    PAST = [0.051, 0.064, 0.073, 0.054]
+
+    def test_published_example(self, paid):
+        model = InflationAdjustedChainLadder(paid, self.PAST, future_inflation=0.10)
+
+        # Payments restated at the prices of the latest year
+        real = model.real_triangle.to_frame()
+        assert real.loc[2008, 0] == pytest.approx(994, abs=1)
+        assert real.loc[2011, 0] == pytest.approx(1286, abs=1)
+        assert real.loc[2012, 0] == 1182
+        np.testing.assert_allclose(model.factors, [1.7334, 1.5321, 1.0941, 1.0273], atol=3e-4)
+
+        # Published forecasts in money terms and a reserve of 5,136
+        np.testing.assert_allclose(model.ultimate, [2519, 2890, 3306, 3954, 3986], atol=2)
+        assert model.full_triangle.loc[2012, 1] == pytest.approx(2136, abs=1)
+        assert model.reserve() == pytest.approx(5136, abs=3)
+
+    def test_index(self, paid):
+        model = InflationAdjustedChainLadder(paid, self.PAST)
+        index = model.index.to_numpy()
+        assert index[-1] == 1.0
+        assert index[0] == pytest.approx(1 / (1.051 * 1.064 * 1.073 * 1.054))
+
+    def test_no_inflation_is_the_basic_chain_ladder(self, paid):
+        model = InflationAdjustedChainLadder(paid, 0.0, 0.0)
+        np.testing.assert_allclose(model.ultimate, ChainLadder(paid).ultimate)
+
+    def test_constant_inflation_matches_basic_chain_ladder(self, paid):
+        """If future inflation repeats a constant past rate, nothing changes."""
+        same = InflationAdjustedChainLadder(paid, 0.06, 0.06)
+        higher = InflationAdjustedChainLadder(paid, 0.06, 0.10)
+        basic = ChainLadder(paid)
+        assert same.reserve() == pytest.approx(basic.reserve(), rel=0.01)
+        assert higher.reserve() > same.reserve()
+
+    def test_varying_future_inflation(self, paid):
+        flat = InflationAdjustedChainLadder(paid, self.PAST, 0.10)
+        varying = InflationAdjustedChainLadder(paid, self.PAST, [0.10, 0.10, 0.10, 0.10])
+        np.testing.assert_allclose(varying.ultimate, flat.ultimate)
+        with pytest.raises(ValueError, match="future_inflation needs 4 rates"):
+            InflationAdjustedChainLadder(paid, self.PAST, [0.1, 0.1])
+        with pytest.raises(ValueError, match="past_inflation needs 4 rates"):
+            InflationAdjustedChainLadder(paid, [0.05, 0.05])
