@@ -21,6 +21,7 @@ from .chain_ladder import ChainLadder, MackChainLadder, estimate_tail_factor
 from .inflation import InflationAdjustedChainLadder
 from .average_cost import AverageCostPerClaim, grossing_up
 from .bornhuetter_ferguson import BornhuetterFerguson
+from .bootstrap import BootChainLadder
 from .datasets import load_raa, load_genins
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     'grossing_up',
     'BornhuetterFerguson',
     'MackChainLadder',
+    'BootChainLadder',
     'estimate_tail_factor',
     'load_raa',
     'load_genins',

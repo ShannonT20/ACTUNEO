@@ -12,7 +12,8 @@ import numpy as np
 import pytest
 from actuneo.loss_reserving import (
     Triangle, ChainLadder, MackChainLadder, InflationAdjustedChainLadder,
-    AverageCostPerClaim, BornhuetterFerguson, grossing_up, estimate_tail_factor, load_raa, load_genins,
+    AverageCostPerClaim, BornhuetterFerguson, BootChainLadder,
+    grossing_up, estimate_tail_factor, load_raa, load_genins,
 )
 
 N = np.nan
@@ -368,3 +369,61 @@ class TestBornhuetterFerguson:
                                 initial_ultimate=[1] * 6)
         with pytest.raises(ValueError, match="One value"):
             BornhuetterFerguson(bf_triangle, premium=[1, 2, 3], loss_ratio=0.8)
+
+
+class TestBootChainLadder:
+    """Bootstrap of the chain-ladder."""
+
+    def test_scale_parameter(self):
+        """Pearson scale of the Taylor/Ashe data, England and Verrall (2002)."""
+        boot = BootChainLadder(load_genins(), n_simulations=10, seed=0)
+        assert boot.scale == pytest.approx(52601, abs=1)
+        # Residuals of the two single-observation corners are zero
+        residuals = boot.residuals.to_numpy()
+        assert residuals[0, -1] == pytest.approx(0, abs=1e-6)
+        assert residuals[-1, 0] == pytest.approx(0, abs=1e-6)
+
+    def test_taylor_ashe_prediction_error(self):
+        """
+        England and Verrall (2002) give a chain-ladder reserve of 18,680,856
+        and an analytic over-dispersed Poisson prediction error of 2,945,659.
+        """
+        boot = BootChainLadder(load_genins(), n_simulations=10000, seed=42)
+        assert boot.mean_ibnr == pytest.approx(18680856, rel=0.02)
+        assert boot.sd_ibnr == pytest.approx(2945659, rel=0.05)
+
+    def test_reproducible_with_seed(self):
+        raa = load_raa()
+        first = BootChainLadder(raa, 200, seed=7)
+        second = BootChainLadder(raa, 200, seed=7)
+        other = BootChainLadder(raa, 200, seed=8)
+        assert first.total_ibnr_simulations.equals(second.total_ibnr_simulations)
+        assert not first.total_ibnr_simulations.equals(other.total_ibnr_simulations)
+
+    def test_outputs(self):
+        boot = BootChainLadder(load_raa(), 500, seed=1)
+        assert boot.ibnr_simulations.shape == (500, 10)
+        assert len(boot.total_ibnr_simulations) == 500
+        # The fully developed first year has no reserve
+        assert (boot.ibnr_simulations[1981] == 0).all()
+
+        summary = boot.summary()
+        assert list(summary.columns) == [
+            "latest", "mean_ultimate", "mean_ibnr", "sd_ibnr", "ibnr_75%", "ibnr_95%"
+        ]
+        assert summary.loc["Total", "latest"] == 160987
+        assert summary.loc["Total", "ibnr_95%"] > summary.loc["Total", "ibnr_75%"]
+        assert summary.loc["Total", "mean_ibnr"] == pytest.approx(boot.mean_ibnr)
+
+        quantiles = boot.quantile([0.5, 0.995])
+        assert list(quantiles.columns) == ["ibnr_50%", "ibnr_99.5%"]
+        assert quantiles.loc["Total", "ibnr_99.5%"] > quantiles.loc["Total", "ibnr_50%"]
+
+    def test_process_distributions(self):
+        genins = load_genins()
+        gamma = BootChainLadder(genins, 4000, "gamma", seed=3)
+        poisson = BootChainLadder(genins, 4000, "od_poisson", seed=3)
+        assert poisson.mean_ibnr == pytest.approx(gamma.mean_ibnr, rel=0.02)
+        assert poisson.sd_ibnr == pytest.approx(gamma.sd_ibnr, rel=0.08)
+        with pytest.raises(ValueError):
+            BootChainLadder(genins, 10, "normal")
