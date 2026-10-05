@@ -8,14 +8,26 @@ from actuneo.mortality import MortalityTable
 from actuneo.finance import YieldCurve
 
 
+def makeham_qx(ages, a=0.0007, b=0.00005, c=1.09):
+    """One-year mortality rates under Makeham's law, mu_x = a + b * c**x."""
+    ages = np.asarray(ages, dtype=float)
+    return 1 - np.exp(-(a + b * c ** ages * (c - 1) / np.log(c)))
+
+
 @pytest.fixture
 def sample_mortality_table():
-    """Create a sample mortality table for testing."""
-    ages = np.arange(20, 101)
-    # Simplified mortality rates - increasing with age
-    qx = 0.001 + 0.00005 * (ages - 20)
-    qx = np.clip(qx, 0, 0.1)  # Cap at 10% for reasonableness
+    """A closed Makeham mortality table for ages 20-110 (qx = 1 at age 110)."""
+    ages = np.arange(20, 111)
+    qx = makeham_qx(ages)
+    qx[-1] = 1.0
     return MortalityTable(ages, qx, name="Test Table")
+
+
+@pytest.fixture
+def open_mortality_table():
+    """The same table cut off at age 100, where qx is still below 1."""
+    ages = np.arange(20, 101)
+    return MortalityTable(ages, makeham_qx(ages), name="Open Test Table")
 
 
 @pytest.fixture
