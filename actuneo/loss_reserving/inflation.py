@@ -19,9 +19,10 @@ class InflationAdjustedChainLadder(ChainLadder):
     """
     Chain-ladder with explicit allowance for past and future claims inflation.
 
-    Calendar periods run along the diagonals of the triangle, so origin and
-    development periods must have the same length (for example accident
-    years and development years). Payments are treated as made mid-period.
+    Calendar periods run along the diagonals of the triangle. Origin and
+    development periods normally have the same length (for example accident
+    years and development years); set ``development_per_origin`` when the
+    development periods are shorter. Payments are treated as made mid-period.
 
     Attributes:
         index: Inflation index for each past calendar period, 1 at the latest
@@ -36,7 +37,10 @@ class InflationAdjustedChainLadder(ChainLadder):
                  past_inflation: Union[float, Sequence[float]],
                  future_inflation: Union[float, Sequence[float]] = 0.0,
                  average: str = "volume",
-                 n_periods: Optional[int] = None):
+                 n_periods: Optional[int] = None,
+                 development_per_origin: int = 1,
+                 factors: Optional[Sequence[float]] = None,
+                 tail: Union[float, bool] = 1.0):
         """
         Fit the inflation-adjusted chain-ladder.
 
@@ -50,19 +54,31 @@ class InflationAdjustedChainLadder(ChainLadder):
                 period, nearest first, or a single rate for all of them
             average: "volume" or "simple" averaging of the link ratios
             n_periods: Average only the latest n origin periods (None for all)
+            development_per_origin: Number of development periods in one
+                origin period: 1 when both have the same length, 4 for
+                accident years developed quarterly. Inflation rates are then
+                per development period.
+            factors: Selected real-terms development factors to use instead
+                of those estimated from the inflation-adjusted triangle
+            tail: Tail factor from the last development period to ultimate,
+                applied to the projected cumulative claims in money terms,
+                or True to estimate it from the real-terms factors
         """
         if not isinstance(triangle, Triangle):
             raise TypeError("triangle must be a Triangle")
+        if development_per_origin < 1 or development_per_origin != int(development_per_origin):
+            raise ValueError("development_per_origin must be a positive integer")
+        step = int(development_per_origin)
 
         nominal = triangle.to_cumulative()
         incremental = nominal.to_incremental().values
         n_origin, n_dev = incremental.shape
-        calendar = np.add.outer(np.arange(n_origin), np.arange(n_dev))
+        calendar = np.add.outer(np.arange(n_origin) * step, np.arange(n_dev))
         observed = ~np.isnan(incremental)
         latest_calendar = int(calendar[observed].max())
 
         latest_idx = nominal._latest_index()
-        if np.any(np.arange(n_origin) + latest_idx != latest_calendar):
+        if np.any(np.arange(n_origin) * step + latest_idx != latest_calendar):
             raise ValueError(
                 "The triangle must be observed up to the same calendar period for every "
                 "origin period"
@@ -82,7 +98,9 @@ class InflationAdjustedChainLadder(ChainLadder):
         real = Triangle(np.cumsum(real_incremental, axis=1), nominal.origin,
                         nominal.development, cumulative=True, name=nominal.name)
 
-        super().__init__(real, average=average, n_periods=n_periods)
+        super().__init__(real, average=average, n_periods=n_periods, factors=factors)
+        self.tail = self._resolve_tail(tail, self._f)
+        self.cdf = self.cdf * self.tail
 
         self.real_triangle = real
         self.real_full_triangle = self.full_triangle
@@ -107,7 +125,7 @@ class InflationAdjustedChainLadder(ChainLadder):
             full, index=origin_index, columns=pd.Index(nominal.development, name="development")
         )
         self.latest = nominal.latest_diagonal()
-        self.ultimate = pd.Series(full[:, -1], index=origin_index, name="ultimate")
+        self.ultimate = pd.Series(full[:, -1] * self.tail, index=origin_index, name="ultimate")
         self.ibnr = (self.ultimate - self.latest).rename("ibnr")
 
     @staticmethod

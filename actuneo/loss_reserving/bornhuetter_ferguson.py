@@ -42,7 +42,8 @@ class BornhuetterFerguson(ChainLadder):
                  initial_ultimate: Optional[Sequence[float]] = None,
                  average: str = "volume",
                  n_periods: Optional[int] = None,
-                 tail: Union[float, bool] = 1.0):
+                 tail: Union[float, bool] = 1.0,
+                 factors: Optional[Sequence[float]] = None):
         """
         Fit the Bornhuetter-Ferguson method.
 
@@ -58,8 +59,11 @@ class BornhuetterFerguson(ChainLadder):
             average: "volume" or "simple" averaging of the link ratios
             n_periods: Average only the latest n origin periods (None for all)
             tail: Tail factor, or True to estimate it
+            factors: Selected development factors to use instead of those
+                estimated from the triangle
         """
-        super().__init__(triangle, average=average, n_periods=n_periods, tail=tail)
+        super().__init__(triangle, average=average, n_periods=n_periods, tail=tail,
+                         factors=factors)
         n_origin = self.triangle.n_origin
 
         if initial_ultimate is not None:

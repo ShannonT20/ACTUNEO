@@ -94,10 +94,11 @@ class BootChainLadder:
         fitted = self._incremental(fitted_cum)
         actual = self._incremental(cum)
 
-        if np.any(fitted[observed] == 0):
-            raise ValueError("The fitted incremental claims contain zeros; cannot form residuals")
+        # A cell with a fitted value of zero has no residual and is left as it is
         root = np.sqrt(np.abs(fitted))
-        unscaled = (actual - fitted) / root
+        with np.errstate(divide="ignore", invalid="ignore"):
+            unscaled = np.where(root > 0, (actual - fitted) / root, 0.0)
+        unscaled[~observed] = np.nan
 
         n_obs = int(observed.sum())
         n_parameters = n_origin + n_dev - 1
@@ -109,7 +110,11 @@ class BootChainLadder:
                                       columns=self.chain_ladder.full_triangle.columns)
 
         # Pseudo triangles: resampled residuals applied to the fitted increments
-        pool = adjusted[observed]
+        pool = adjusted[observed & (root > 0)]
+        if len(pool) == 0 or self.scale <= 0:
+            raise ValueError(
+                "The chain-ladder fits the triangle exactly, so there is nothing to bootstrap"
+            )
         sims = self.n_simulations
         draws = rng.choice(pool, size=(sims, n_obs), replace=True)
         pseudo_incremental = np.zeros((sims, n_origin, n_dev))
@@ -200,6 +205,21 @@ class BootChainLadder:
             self.latest.sum(), self.latest.sum() + self.mean_ibnr, self.mean_ibnr, self.sd_ibnr,
         ]
         return table.join(self.quantile(list(quantiles)))
+
+    def plot(self, ax=None, bins: int = 50):
+        """
+        Histogram of the simulated total reserve (needs matplotlib).
+
+        Args:
+            ax: Matplotlib axes to draw on (a new figure if omitted)
+            bins: Number of histogram bins
+
+        Returns:
+            The matplotlib axes
+        """
+        from ._plotting import plot_distribution
+        return plot_distribution(self.total_ibnr_simulations, self.chain_ladder.total_ibnr,
+                                 f"{self.triangle.name}: simulated total reserve", ax, bins)
 
     def __repr__(self) -> str:
         return (f"BootChainLadder(triangle='{self.triangle.name}', "

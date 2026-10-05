@@ -17,6 +17,9 @@ References
   29(2), 361-366.
 - England, P.D. and Verrall, R.J. (2002). Stochastic claims reserving in
   general insurance. British Actuarial Journal 8(3), 443-518.
+- Buchwalder, M., Buhlmann, H., Merz, M. and Wuthrich, M.V. (2006). The mean
+  square error of prediction in the chain ladder reserving method (Mack and
+  Murphy revisited). ASTIN Bulletin 36(2), 521-542.
 - Gesmann, M., Murphy, D., Zhang, Y., Carrato, A., Wuthrich, M., Concina, F.
   and Dal Moro, E. ChainLadder: Statistical Methods and Models for Claims
   Reserving in General Insurance. R package.
@@ -25,7 +28,7 @@ References
 import warnings
 import numpy as np
 import pandas as pd
-from typing import Optional, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 from .triangle import Triangle
 
 
@@ -101,7 +104,8 @@ class ChainLadder:
                  triangle: Triangle,
                  average: str = "volume",
                  n_periods: Optional[int] = None,
-                 tail: Union[float, bool] = 1.0):
+                 tail: Union[float, bool] = 1.0,
+                 factors: Optional[Sequence[float]] = None):
         """
         Fit the chain-ladder method.
 
@@ -112,6 +116,9 @@ class ChainLadder:
             n_periods: Average only the latest n origin periods (None for all)
             tail: Tail factor applied after the last development period, or
                 True to estimate it with :func:`estimate_tail_factor`
+            factors: Selected development factors to use instead of those
+                estimated from the triangle, one per development step. Use
+                None (or NaN) for a step to keep the estimated factor.
         """
         if not isinstance(triangle, Triangle):
             raise TypeError("triangle must be a Triangle")
@@ -119,6 +126,7 @@ class ChainLadder:
         self.triangle = triangle.to_cumulative()
         self.average = average
         self.n_periods = n_periods
+        self.selected_factors = factors
         factors = self._development_factors()
         self.tail = self._resolve_tail(tail, factors)
         self._fit(factors)
@@ -134,7 +142,18 @@ class ChainLadder:
         return float(tail)
 
     def _development_factors(self) -> np.ndarray:
-        return self.triangle.development_factors(self.average, self.n_periods).to_numpy()
+        estimated = self.triangle.development_factors(self.average, self.n_periods).to_numpy()
+        if self.selected_factors is None:
+            return estimated
+        selected = np.array([np.nan if f is None else f for f in self.selected_factors],
+                            dtype=float)
+        if selected.shape != estimated.shape:
+            raise ValueError(
+                f"factors needs one value for each of the {len(estimated)} development steps"
+            )
+        if np.any(selected[~np.isnan(selected)] <= 0):
+            raise ValueError("factors must be positive")
+        return np.where(np.isnan(selected), estimated, selected)
 
     def _fit(self, factors: np.ndarray):
         tri = self.triangle
@@ -188,6 +207,132 @@ class ChainLadder:
             return self.total_ibnr
         return float(self.ultimate.sum() - paid_to_date)
 
+    # ------------------------------------------------------------------
+    # Future payments
+    # ------------------------------------------------------------------
+    def future_incremental(self) -> pd.DataFrame:
+        """
+        Projected incremental claims for the cells not yet observed.
+
+        Returns:
+            DataFrame by origin and development period, NaN for observed
+            cells. When the projection includes a tail, the amount expected
+            after the last development period is in a final "tail" column.
+        """
+        full = self._full
+        incremental = full.copy()
+        incremental[:, 1:] = np.diff(full, axis=1)
+        incremental[~np.isnan(self.triangle.values)] = np.nan
+        table = pd.DataFrame(incremental, index=self.full_triangle.index,
+                             columns=list(self.full_triangle.columns))
+        tail_amount = self.ultimate.to_numpy() - full[:, -1]
+        if np.any(np.abs(tail_amount) > 1e-9 * np.maximum(1.0, np.abs(full[:, -1]))):
+            table["tail"] = tail_amount
+        return table
+
+    def cash_flows(self) -> pd.Series:
+        """
+        Expected future claims by period of payment.
+
+        Period 1 is the development period following the valuation date,
+        period 2 the one after, and so on. A tail amount is placed in the
+        period after the origin period reaches the last development period.
+
+        Returns:
+            Series of expected payments indexed by future period
+        """
+        future = self.future_incremental().to_numpy()
+        periods_ahead = np.arange(future.shape[1])[None, :] - self._latest_idx[:, None]
+        valid = ~np.isnan(future) & (periods_ahead > 0)
+        n_periods = int(periods_ahead[valid].max()) if valid.any() else 0
+        flows = np.zeros(n_periods)
+        np.add.at(flows, periods_ahead[valid] - 1, future[valid])
+        return pd.Series(flows, index=pd.RangeIndex(1, n_periods + 1, name="period"),
+                         name="cash_flow")
+
+    def discounted_reserve(self,
+                           discount_rate,
+                           timing: float = 0.5,
+                           periods_per_year: int = 1) -> float:
+        """
+        Present value of the expected future claims.
+
+        Args:
+            discount_rate: Annual effective rate of interest, or a yield
+                curve object with a ``get_discount_factor(years)`` method
+                such as :class:`actuneo.finance.YieldCurve`
+            timing: When payments fall within each period: 0.5 for mid-period
+                (the default), 0 for the start, 1 for the end
+            periods_per_year: Development periods in a year (1 for annual
+                triangles, 4 for quarterly, 12 for monthly)
+
+        Returns:
+            Discounted reserve. Compare with :meth:`reserve` for the
+            undiscounted figure.
+        """
+        if not 0 <= timing <= 1:
+            raise ValueError("timing must be between 0 and 1")
+        flows = self.cash_flows()
+        years = (flows.index.to_numpy() - 1 + timing) / periods_per_year
+        if hasattr(discount_rate, "get_discount_factor"):
+            factors = np.array([discount_rate.get_discount_factor(t) for t in years])
+        else:
+            if discount_rate <= -1:
+                raise ValueError("discount_rate must be greater than -1")
+            factors = (1 + discount_rate) ** -years
+        return float(np.sum(flows.to_numpy() * factors))
+
+    # ------------------------------------------------------------------
+    # Output
+    # ------------------------------------------------------------------
+    def to_excel(self, path: str) -> None:
+        """
+        Write the results to an Excel workbook (needs openpyxl).
+
+        Sheets: Summary, Triangle, Projection, Factors and Cash flows.
+
+        Args:
+            path: File name of the workbook, ending in .xlsx
+        """
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "Writing Excel files requires openpyxl. Install it with: "
+                "pip install actuneo[excel]"
+            ) from exc
+
+        factors = pd.DataFrame({"factor": self.factors})
+        factors["cdf"] = self.cdf.to_numpy()[:-1]
+        for name in ("sigma", "f_se"):
+            if hasattr(self, name):
+                factors[name] = getattr(self, name)
+        with pd.ExcelWriter(path, engine="openpyxl") as writer:
+            self.summary().to_excel(writer, sheet_name="Summary")
+            self.triangle.to_frame().to_excel(writer, sheet_name="Triangle")
+            self.full_triangle.to_excel(writer, sheet_name="Projection")
+            factors.to_excel(writer, sheet_name="Factors")
+            self.cash_flows().to_frame().to_excel(writer, sheet_name="Cash flows")
+
+    def plot(self, ax=None):
+        """
+        Bar chart of latest claims and reserve by origin period (needs
+        matplotlib). Mack's standard error is shown as error bars when the
+        model provides it.
+
+        Args:
+            ax: Matplotlib axes to draw on (a new figure if omitted)
+
+        Returns:
+            The matplotlib axes
+        """
+        from ._plotting import plot_reserves
+        return plot_reserves(self.latest, self.ibnr, getattr(self, "mack_se", None),
+                             f"{self.triangle.name}: latest claims and reserve", ax)
+
+    # ------------------------------------------------------------------
+    # Model checks
+    # ------------------------------------------------------------------
     def fitted_triangle(self) -> pd.DataFrame:
         """
         Cumulative claims the development factors would have produced.
@@ -279,7 +424,8 @@ class MackChainLadder(ChainLadder):
                  est_sigma: str = "log-linear",
                  tail: Union[float, bool] = 1.0,
                  tail_se: Optional[float] = None,
-                 tail_sigma: Optional[float] = None):
+                 tail_sigma: Optional[float] = None,
+                 mse_method: str = "mack"):
         """
         Fit the Mack chain-ladder model.
 
@@ -298,6 +444,10 @@ class MackChainLadder(ChainLadder):
                 True to estimate it with :func:`estimate_tail_factor`
             tail_se: Standard error of the tail factor
             tail_sigma: Sigma of the tail development step
+            mse_method: "mack" for Mack's formula for the estimation error,
+                "independence" to include the cross-product term of
+                Murphy (1994) and Buchwalder, Buhlmann, Merz and Wuthrich
+                (2006), which gives a slightly larger parameter risk
 
         Following Mack (1999), when ``tail_se`` or ``tail_sigma`` is not given
         it is read off a log-linear trend of the standard errors (or sigmas)
@@ -307,12 +457,16 @@ class MackChainLadder(ChainLadder):
         """
         if est_sigma not in ("log-linear", "mack"):
             raise ValueError("est_sigma must be 'log-linear' or 'mack'")
+        if mse_method not in ("mack", "independence"):
+            raise ValueError("mse_method must be 'mack' or 'independence'")
+        self.mse_method = mse_method
         if not isinstance(triangle, Triangle):
             raise TypeError("triangle must be a Triangle")
 
         self.triangle = triangle.to_cumulative()
         self.alpha = float(alpha)
         self.est_sigma = est_sigma
+        self.selected_factors = None
         self.average = {1.0: "volume", 0.0: "simple"}.get(self.alpha, f"alpha={self.alpha}")
         self.n_periods = None
 
@@ -353,8 +507,8 @@ class MackChainLadder(ChainLadder):
 
     def _estimate_parameters(self):
         cum = self.triangle.values
-        if np.any(cum[~np.isnan(cum)] <= 0):
-            raise ValueError("Mack's model needs positive cumulative claims in every cell")
+        if np.any(cum[~np.isnan(cum)] < 0):
+            raise ValueError("Mack's model cannot be fitted to negative cumulative claims")
 
         n_steps = cum.shape[1] - 1
         factors = np.full(n_steps, np.nan)
@@ -362,7 +516,9 @@ class MackChainLadder(ChainLadder):
         weight_sum = np.full(n_steps, np.nan)
 
         for k in range(n_steps):
-            rows = ~np.isnan(cum[:, k]) & ~np.isnan(cum[:, k + 1])
+            # A link ratio needs positive claims at the start of the step
+            with np.errstate(invalid="ignore"):
+                rows = ~np.isnan(cum[:, k + 1]) & (cum[:, k] > 0)
             if not rows.any():
                 continue
             start, end = cum[rows, k], cum[rows, k + 1]
@@ -424,28 +580,31 @@ class MackChainLadder(ChainLadder):
 
         # Recursion of Mack (1999): squared risks roll forward one development
         # step at a time from the latest diagonal
+        cross = 1.0 if self.mse_method == "independence" else 0.0
         process2 = np.zeros(n_origin)
         parameter2 = np.zeros(n_origin)
         for i, j0 in enumerate(self._latest_idx):
             for k in range(j0, n_dev - 1):
                 c = full[i, k]
                 process2[i] = process2[i] * f[k] ** 2 + sigma[k] ** 2 * c ** (2 - self.alpha)
-                parameter2[i] = parameter2[i] * f[k] ** 2 + c ** 2 * f_se[k] ** 2
+                parameter2[i] = (parameter2[i] * (f[k] ** 2 + cross * f_se[k] ** 2)
+                                 + c ** 2 * f_se[k] ** 2)
 
         # Total: process risk adds across independent origin periods, while the
         # estimation error of each factor is common to all origins it projects
         total_parameter2 = 0.0
         for k in range(n_dev - 1):
             projected = self._latest_idx <= k
-            total_parameter2 = (total_parameter2 * f[k] ** 2
+            total_parameter2 = (total_parameter2 * (f[k] ** 2 + cross * f_se[k] ** 2)
                                 + full[projected, k].sum() ** 2 * f_se[k] ** 2)
 
         # The tail is one more development step, applied to every origin period
         if self.tail != 1.0:
             last = full[:, -1]
             process2 = process2 * self.tail ** 2 + self.tail_sigma ** 2 * last ** (2 - self.alpha)
-            parameter2 = parameter2 * self.tail ** 2 + last ** 2 * self.tail_se ** 2
-            total_parameter2 = (total_parameter2 * self.tail ** 2
+            tail_growth = self.tail ** 2 + cross * self.tail_se ** 2
+            parameter2 = parameter2 * tail_growth + last ** 2 * self.tail_se ** 2
+            total_parameter2 = (total_parameter2 * tail_growth
                                 + last.sum() ** 2 * self.tail_se ** 2)
 
         self.sigma = pd.Series(sigma, index=labels, name="sigma")
@@ -458,6 +617,77 @@ class MackChainLadder(ChainLadder):
         self.total_process_risk = float(np.sqrt(process2.sum()))
         self.total_parameter_risk = float(np.sqrt(total_parameter2))
         self.total_mack_se = float(np.sqrt(process2.sum() + total_parameter2))
+
+    def residuals(self) -> pd.DataFrame:
+        """
+        Standardised residuals of the individual link ratios,
+        ``(F[i, k] - f[k]) * sqrt(C[i, k]**alpha) / sigma[k]``.
+
+        Under the model they have mean 0 and a similar spread in every
+        development step, origin period and calendar period. Trends point to
+        a breach of the chain-ladder assumptions.
+        """
+        cum = self.triangle.values
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratios = cum[:, 1:] / cum[:, :-1]
+            standardised = ((ratios - self._f) * np.sqrt(cum[:, :-1] ** self.alpha)
+                            / self.sigma.to_numpy())
+        standardised[~np.isfinite(standardised)] = np.nan
+        return pd.DataFrame(standardised, index=self.full_triangle.index,
+                            columns=self.triangle._link_labels())
+
+    def reserve_quantile(self, q, distribution: str = "lognormal") -> pd.DataFrame:
+        """
+        Quantiles of the reserve from a distribution fitted to the estimated
+        reserve and its Mack standard error.
+
+        Mack's method gives a mean and a standard error but no distribution,
+        so a shape has to be assumed. The lognormal is the usual choice
+        because reserves are positive and skewed.
+
+        Args:
+            q: Probability or list of probabilities, for example [0.75, 0.995]
+            distribution: "lognormal" or "normal"
+
+        Returns:
+            DataFrame of reserve quantiles by origin period with a "Total"
+            row. A lognormal quantile is NaN where the reserve is not positive.
+        """
+        from scipy import stats
+        if distribution not in ("lognormal", "normal"):
+            raise ValueError("distribution must be 'lognormal' or 'normal'")
+        probabilities = np.atleast_1d(np.asarray(q, dtype=float))
+        if np.any((probabilities <= 0) | (probabilities >= 1)):
+            raise ValueError("probabilities must be between 0 and 1")
+
+        mean = np.append(self.ibnr.to_numpy(), self.total_ibnr)
+        se = np.append(self.mack_se.to_numpy(), self.total_mack_se)
+        z = stats.norm.ppf(probabilities)[None, :]
+        if distribution == "normal":
+            values = mean[:, None] + z * se[:, None]
+        else:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                log_var = np.log1p((se / mean) ** 2)
+                values = np.exp((np.log(mean) - log_var / 2)[:, None]
+                                + z * np.sqrt(log_var)[:, None])
+            values[mean <= 0] = np.nan
+        index = pd.Index(list(self.ibnr.index) + ["Total"], name="origin")
+        return pd.DataFrame(values, index=index,
+                            columns=[f"ibnr_{100 * p:g}%" for p in probabilities])
+
+    def plot_residuals(self, ax=None):
+        """
+        Plot the standardised residuals against development step (needs
+        matplotlib).
+
+        Args:
+            ax: Matplotlib axes to draw on (a new figure if omitted)
+
+        Returns:
+            The matplotlib axes
+        """
+        from ._plotting import plot_residuals
+        return plot_residuals(self.residuals(), f"{self.triangle.name}: Mack residuals", ax)
 
     def summary(self, total: bool = True) -> pd.DataFrame:
         """
