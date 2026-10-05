@@ -3,6 +3,27 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
+Version 0.3.0 (2026-10-05)
+--------------------------
+
+Added
+~~~~~
+
+* ``InflationAdjustedChainLadder``: chain-ladder in real terms with explicit past and
+  future claims inflation
+* ``AverageCostPerClaim`` and ``grossing_up``: separate projection of claim numbers and
+  average claim amounts, with grossing-up or development factors
+* ``BornhuetterFerguson``: from premium and loss ratio, or any initial estimate of ultimate claims
+* ``BootChainLadder``: bootstrap of the over-dispersed Poisson chain-ladder with gamma or
+  over-dispersed Poisson process error, giving the reserve distribution and its quantiles
+* Tail factors: ``estimate_tail_factor``, ``tail=True`` in ``ChainLadder``, and a tail with
+  its own standard error and sigma in ``MackChainLadder``
+* ``ChainLadder.fitted_triangle`` and ``fit_errors`` for checking the model against the past,
+  and ``reserve(paid_to_date)`` for triangles of incurred claims
+
+The new methods are tested against standard worked examples and against the scale parameter
+and prediction error published by England and Verrall (2002) for the Taylor/Ashe data.
+
 Version 0.2.0 (2026-10-05)
 --------------------------
 

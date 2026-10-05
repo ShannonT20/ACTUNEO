@@ -200,6 +200,78 @@ payment:
                             value="paid", cumulative=False)
    print(ChainLadder(tri).summary())
 
+Reserving Methods
+-----------------
+
+The methods below all start from a ``Triangle``. The example is a triangle of
+cumulative claim payments for accident years 2008 to 2012.
+
+.. code-block:: python
+
+   import numpy as np
+   from actuneo.loss_reserving import (
+       Triangle, ChainLadder, InflationAdjustedChainLadder, BornhuetterFerguson,
+       AverageCostPerClaim, MackChainLadder, BootChainLadder,
+   )
+
+   nan = np.nan
+   paid = Triangle(
+       [[786, 1410, 2216, 2440, 2519],
+        [904, 1575, 2515, 2796, nan],
+        [995, 1814, 2880, nan, nan],
+        [1220, 2142, nan, nan, nan],
+        [1182, nan, nan, nan, nan]],
+       origin=range(2008, 2013), development=range(5),
+   )
+
+   # Basic chain-ladder, and a check of how well it fits the past
+   cl = ChainLadder(paid)
+   print(cl.factors.round(3))
+   print(f"Reserve: {cl.reserve():,.0f}")
+   print(cl.fit_errors().round(0))        # actual less fitted payments
+
+   # Explicit inflation: past rates by calendar year, 10% a year in future
+   inflated = InflationAdjustedChainLadder(
+       paid, past_inflation=[0.051, 0.064, 0.073, 0.054], future_inflation=0.10
+   )
+   print(f"Inflation-adjusted reserve: {inflated.reserve():,.0f}")
+
+   # Bornhuetter-Ferguson: premium and an expected loss ratio
+   bf = BornhuetterFerguson(paid, premium=[3300, 3600, 4100, 4700, 4800], loss_ratio=0.80)
+   print(bf.summary().round(0))
+
+   # A tail factor, supplied or estimated from the decay of the factors
+   print(f"With a 2% tail: {ChainLadder(paid, tail=1.02).reserve():,.0f}")
+
+Average cost per claim needs a triangle of claim numbers on the same basis as
+the claims triangle:
+
+.. code-block:: python
+
+   claims = Triangle([[632, 714, 788, 822], [729, 784, 803, nan],
+                      [800, 855, nan, nan], [824, nan, nan, nan]])
+   numbers = Triangle([[52, 60, 66, 70], [54, 63, 65, nan],
+                       [60, 70, nan, nan], [65, nan, nan, nan]])
+
+   acpc = AverageCostPerClaim(claims, numbers, method="chain_ladder")
+   print(acpc.summary().round(3))
+   # The triangle holds incurred claims, so deduct what has been paid
+   print(f"Reserve: {acpc.reserve(paid_to_date=1902):,.0f}")
+
+Uncertainty of the reserve, from Mack's formula or by simulation:
+
+.. code-block:: python
+
+   from actuneo.loss_reserving import load_genins
+
+   triangle = load_genins()
+
+   mack = MackChainLadder(triangle, est_sigma="mack")
+   print(f"Mack: reserve {mack.total_ibnr:,.0f}, standard error {mack.total_mack_se:,.0f}")
+
+   boot = BootChainLadder(triangle, n_simulations=2000, seed=1)
+   print(boot.summary(quantiles=[0.75, 0.995]).round(0))
+
 Next Steps
 ----------
 

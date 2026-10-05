@@ -17,7 +17,7 @@ ACTUNEO is an open-source, community-driven actuarial Python library that empowe
 - **mortality**: Mortality tables, life contingencies and commutation functions, with the Zimbabwe 2023 tables included
 - **finance**: Interest theory, yield curve construction/interpolation, duration, and convexity
 - **life**: Life assurance, annuities, premiums and reserves, for one or two lives
-- **loss_reserving**: Claims triangles, chain-ladder projection and Mack's standard error
+- **loss_reserving**: Claims triangles, chain-ladder (basic and inflation-adjusted), average cost per claim, Bornhuetter-Ferguson, Mack's standard error and bootstrap
 - **zimbabwe**: Catalogue of the Zimbabwe 2023 mortality tables and ZWL to ZiG conversion
 
 ### In Development (Scaffolding Present)

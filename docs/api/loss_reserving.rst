@@ -19,6 +19,31 @@ ChainLadder
    :members:
    :special-members: __init__
 
+InflationAdjustedChainLadder
+----------------------------
+
+.. autoclass:: actuneo.loss_reserving.InflationAdjustedChainLadder
+   :members:
+   :show-inheritance:
+   :special-members: __init__
+
+AverageCostPerClaim
+-------------------
+
+.. autoclass:: actuneo.loss_reserving.AverageCostPerClaim
+   :members:
+   :special-members: __init__
+
+.. autofunction:: actuneo.loss_reserving.grossing_up
+
+BornhuetterFerguson
+-------------------
+
+.. autoclass:: actuneo.loss_reserving.BornhuetterFerguson
+   :members:
+   :show-inheritance:
+   :special-members: __init__
+
 MackChainLadder
 ---------------
 
@@ -26,6 +51,18 @@ MackChainLadder
    :members:
    :show-inheritance:
    :special-members: __init__
+
+BootChainLadder
+---------------
+
+.. autoclass:: actuneo.loss_reserving.BootChainLadder
+   :members:
+   :special-members: __init__
+
+Tail Factors
+------------
+
+.. autofunction:: actuneo.loss_reserving.estimate_tail_factor
 
 Example Triangles
 -----------------
@@ -37,6 +74,6 @@ Example Triangles
 Planned Features
 ----------------
 
-* Tail factor estimation and its standard error in Mack's model
-* Bornhuetter-Ferguson and Cape Cod methods
-* Bootstrap and other stochastic reserving models
+* Cape Cod and Munich chain-ladder methods
+* Discounted reserves
+* Residual and development plots
