@@ -19,12 +19,15 @@ This module provides tools for:
 from .triangle import Triangle
 from .chain_ladder import ChainLadder, MackChainLadder, estimate_tail_factor
 from .inflation import InflationAdjustedChainLadder
+from .average_cost import AverageCostPerClaim, grossing_up
 from .datasets import load_raa, load_genins
 
 __all__ = [
     'Triangle',
     'ChainLadder',
     'InflationAdjustedChainLadder',
+    'AverageCostPerClaim',
+    'grossing_up',
     'MackChainLadder',
     'estimate_tail_factor',
     'load_raa',

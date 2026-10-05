@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from actuneo.loss_reserving import (
     Triangle, ChainLadder, MackChainLadder, InflationAdjustedChainLadder,
-    estimate_tail_factor, load_raa, load_genins,
+    AverageCostPerClaim, grossing_up, estimate_tail_factor, load_raa, load_genins,
 )
 
 N = np.nan
@@ -250,3 +250,51 @@ class TestInflationAdjustedChainLadder:
             InflationAdjustedChainLadder(paid, self.PAST, [0.1, 0.1])
         with pytest.raises(ValueError, match="past_inflation needs 4 rates"):
             InflationAdjustedChainLadder(paid, [0.05, 0.05])
+
+
+class TestAverageCostPerClaim:
+    """Average cost per claim method."""
+
+    def test_grossing_up_factors(self, reported_numbers):
+        table = grossing_up(reported_numbers)
+        # First year is fully run off: factors are proportions of its final figure
+        assert table.loc[1, 1] == pytest.approx(414 / 494)
+        assert table.loc[1, "ultimate"] == 494
+        # Second year is grossed up by the first year's factor
+        assert table.loc[2, "ultimate"] == pytest.approx(539 / (492 / 494))
+        # Third year by the average of the first two
+        expected = 582 / np.mean([488 / 494, 536 / table.loc[2, "ultimate"]])
+        assert table.loc[3, "ultimate"] == pytest.approx(expected)
+        np.testing.assert_allclose(table["ultimate"], [494, 541, 588, 632, 649, 664], atol=0.5)
+
+    def test_grossing_up_example(self, incurred, reported_numbers):
+        acpc = AverageCostPerClaim(incurred, reported_numbers)
+        assert acpc.average_cost.values[0, 0] == pytest.approx(6.708, abs=5e-4)
+        np.testing.assert_allclose(
+            acpc.ultimate_average_cost, [7.524, 7.973, 8.632, 9.657, 10.766, 11.699], atol=5e-3
+        )
+        # Published: loss estimate 33,964 and reserve 13,630 using rounded figures
+        assert acpc.ultimate.sum() == pytest.approx(33964, rel=1e-3)
+        assert acpc.reserve(20334) == pytest.approx(13630, rel=2e-3)
+        assert acpc.summary().loc["Total", "ultimate"] == pytest.approx(acpc.ultimate.sum())
+
+    def test_development_factor_example(self):
+        claims = Triangle([[632, 714, 788, 822], [729, 784, 803, N],
+                           [800, 855, N, N], [824, N, N, N]], origin=range(2009, 2013))
+        numbers = Triangle([[52, 60, 66, 70], [54, 63, 65, N],
+                            [60, 70, N, N], [65, N, N, N]], origin=range(2009, 2013))
+        acpc = AverageCostPerClaim(claims, numbers, method="chain_ladder")
+        np.testing.assert_allclose(acpc.ultimate_numbers, [70, 68.939, 79.071, 85.366], atol=1e-3)
+        np.testing.assert_allclose(
+            acpc.ultimate_average_cost, [11.743, 12.151, 11.988, 11.667], atol=2e-3
+        )
+        assert acpc.ultimate.sum() == pytest.approx(3604, abs=1)
+        assert acpc.reserve(1902) == pytest.approx(1702, abs=1)
+
+    def test_invalid_inputs(self, incurred, reported_numbers):
+        with pytest.raises(ValueError, match="same cells"):
+            AverageCostPerClaim(incurred, load_raa())
+        with pytest.raises(ValueError, match="method"):
+            AverageCostPerClaim(incurred, reported_numbers, method="other")
+        with pytest.raises(TypeError):
+            AverageCostPerClaim(incurred, [[1]])
