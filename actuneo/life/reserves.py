@@ -3,10 +3,13 @@ Reserve Calculations
 
 Provides calculations for policy reserves, prospective and retrospective reserves,
 and related actuarial valuations.
+
+Reserves are per policy in force at the valuation date. Death benefits are
+payable at the end of the year of death and premiums annually in advance.
 """
 
 import numpy as np
-from typing import Optional, Union, List, Dict
+from typing import Optional, List, Dict
 from ..mortality import MortalityTable, SurvivalFunctions
 
 
@@ -36,11 +39,16 @@ class Reserves:
         self.expense_rate = expense_rate
         self.profit_margin = profit_margin
 
+    @staticmethod
+    def _floor(reserve: float, floor_at_zero: bool) -> float:
+        return max(0.0, reserve) if floor_at_zero else reserve
+
     def prospective_reserve_whole_life(self,
                                      x: int,
                                      duration: int,
                                      annual_premium: float,
-                                     sum_assured: float = 1000.0) -> float:
+                                     sum_assured: float = 1000.0,
+                                     floor_at_zero: bool = False) -> float:
         """
         Calculate prospective reserve for whole life assurance.
 
@@ -49,31 +57,26 @@ class Reserves:
             duration: Number of years in force
             annual_premium: Annual premium amount
             sum_assured: Sum assured amount
+            floor_at_zero: Replace a negative reserve by zero
 
         Returns:
             Prospective reserve
         """
         current_age = x + duration
 
-        # Reserve = (A_{x+t} * sum_assured - P * ä_{x+t}) / ä_{x+t}
-        # Where A is whole life assurance, ä is life annuity, P is annual premium
+        # Reserve = SA * A_{x+t} - P * ä_{x+t}
+        benefits = self.sf.assurance(current_age) * sum_assured
+        premiums = annual_premium * self.sf.annuity_due(current_age)
 
-        remaining_assurance = self.sf.assurance(current_age) * sum_assured
-        remaining_annuity = self.sf.annuity_immediate(current_age)
-
-        if remaining_annuity == 0:
-            return remaining_assurance - annual_premium
-
-        reserve = (remaining_assurance - annual_premium * remaining_annuity) / remaining_annuity
-
-        return max(0, reserve)  # Reserve cannot be negative
+        return self._floor(benefits - premiums, floor_at_zero)
 
     def prospective_reserve_term(self,
                                x: int,
                                n: int,
                                duration: int,
                                annual_premium: float,
-                               sum_assured: float = 1000.0) -> float:
+                               sum_assured: float = 1000.0,
+                               floor_at_zero: bool = False) -> float:
         """
         Calculate prospective reserve for term assurance.
 
@@ -83,6 +86,7 @@ class Reserves:
             duration: Number of years in force
             annual_premium: Annual premium amount
             sum_assured: Sum assured amount
+            floor_at_zero: Replace a negative reserve by zero
 
         Returns:
             Prospective reserve
@@ -93,22 +97,18 @@ class Reserves:
         if remaining_term <= 0:
             return 0.0  # Policy expired
 
-        remaining_assurance = self.sf.assurance(current_age, remaining_term) * sum_assured
-        remaining_annuity = self.sf.annuity_immediate(current_age, remaining_term)
+        benefits = self.sf.assurance(current_age, remaining_term) * sum_assured
+        premiums = annual_premium * self.sf.annuity_due(current_age, remaining_term)
 
-        if remaining_annuity == 0:
-            return remaining_assurance - annual_premium
-
-        reserve = (remaining_assurance - annual_premium * remaining_annuity) / remaining_annuity
-
-        return max(0, reserve)
+        return self._floor(benefits - premiums, floor_at_zero)
 
     def prospective_reserve_endowment(self,
                                     x: int,
                                     n: int,
                                     duration: int,
                                     annual_premium: float,
-                                    sum_assured: float = 1000.0) -> float:
+                                    sum_assured: float = 1000.0,
+                                    floor_at_zero: bool = False) -> float:
         """
         Calculate prospective reserve for endowment assurance.
 
@@ -118,100 +118,122 @@ class Reserves:
             duration: Number of years in force
             annual_premium: Annual premium amount
             sum_assured: Sum assured amount
+            floor_at_zero: Replace a negative reserve by zero
 
         Returns:
-            Prospective reserve
+            Prospective reserve (the sum assured at maturity, zero afterwards)
         """
         current_age = x + duration
         remaining_term = n - duration
 
-        if remaining_term <= 0:
+        if remaining_term < 0:
             return 0.0  # Policy matured
 
-        # Endowment reserve = [A_{x+t}:n¨ * SA + v^{n-t} * SA - P * ä_{x+t}:n¨] / ä_{x+t}:n¨
+        # Reserve = SA * A_{x+t:n-t} - P * ä_{x+t:n-t}
+        benefits = self.sf.endowment_assurance(current_age, remaining_term) * sum_assured
+        premiums = annual_premium * self.sf.annuity_due(current_age, remaining_term)
 
-        # Calculate remaining endowment assurance
-        term_assurance = self.sf.assurance(current_age, remaining_term) * sum_assured
-        pure_endowment = self.sf.npx(current_age, remaining_term) * self.v ** remaining_term * sum_assured
-        remaining_assurance = term_assurance + pure_endowment
-
-        remaining_annuity = self.sf.annuity_immediate(current_age, remaining_term)
-
-        if remaining_annuity == 0:
-            return remaining_assurance - annual_premium
-
-        reserve = (remaining_assurance - annual_premium * remaining_annuity) / remaining_annuity
-
-        return max(0, reserve)
+        return self._floor(benefits - premiums, floor_at_zero)
 
     def retrospective_reserve_whole_life(self,
                                        x: int,
                                        duration: int,
                                        annual_premium: float,
-                                       sum_assured: float = 1000.0) -> float:
+                                       sum_assured: float = 1000.0,
+                                       floor_at_zero: bool = False) -> float:
         """
         Calculate retrospective reserve for whole life assurance.
+
+        Premiums received less death claims paid, accumulated with interest
+        and survivorship to the valuation date. It equals the prospective
+        reserve when the premium is the net premium on the same basis.
 
         Args:
             x: Original age at entry
             duration: Number of years in force
             annual_premium: Annual premium amount
             sum_assured: Sum assured amount
+            floor_at_zero: Replace a negative reserve by zero
 
         Returns:
-            Retrospective reserve
+            Retrospective reserve per surviving policy
         """
-        # Retrospective reserve = Accumulated premiums + interest - claims paid
+        if duration == 0:
+            return 0.0
 
-        accumulated_premiums = 0.0
-        interest_factor = 1.0
+        endowment = self.sf.pure_endowment(x, duration)
+        if endowment == 0:
+            raise ValueError(f"No survivors from age {x} to duration {duration}")
 
-        for t in range(duration):
-            age_at_premium = x + t
-            survival_prob = self.sf.npx(x, t)  # Probability of surviving to pay premium
-            accumulated_premiums += annual_premium * survival_prob * interest_factor
-            interest_factor *= (1 + self.i)
+        premiums = annual_premium * self.sf.annuity_due(x, duration)
+        claims = sum_assured * self.sf.assurance(x, duration)
 
-        # Claims paid (simplified - only death claims, ignoring surrenders, etc.)
-        claims_paid = 0.0
-        interest_factor = 1.0
-
-        for t in range(1, duration + 1):
-            # Probability of dying in year t
-            q_t = 1 - self.sf.npx(x, t) + self.sf.npx(x, t-1)
-            claims_paid += q_t * sum_assured * interest_factor
-            interest_factor *= (1 + self.i)
-
-        reserve = accumulated_premiums - claims_paid
-
-        return max(0, reserve)
+        return self._floor((premiums - claims) / endowment, floor_at_zero)
 
     def net_level_premium_reserve(self,
                                 x: int,
                                 duration: int,
-                                net_premium: float,
-                                sum_assured: float = 1000.0) -> float:
+                                net_premium: Optional[float] = None,
+                                sum_assured: float = 1000.0,
+                                floor_at_zero: bool = False) -> float:
         """
-        Calculate net level premium reserve.
+        Calculate net level premium reserve for whole life assurance.
 
         Args:
             x: Original age at entry
             duration: Number of years in force
-            net_premium: Net level annual premium
+            net_premium: Net level annual premium (calculated on the
+                reserving basis if not given)
             sum_assured: Sum assured amount
+            floor_at_zero: Replace a negative reserve by zero
 
         Returns:
             Net level premium reserve
         """
-        # Reserve = v * [A_{x+t} * SA - P * ä_{x+t}]
+        if net_premium is None:
+            net_premium = sum_assured * self.sf.net_annual_premium(x)
+        return self.prospective_reserve_whole_life(
+            x, duration, net_premium, sum_assured, floor_at_zero
+        )
+
+    def zillmer_reserve(self,
+                        x: int,
+                        n: int,
+                        duration: int,
+                        zillmer_rate: float,
+                        sum_assured: float = 1000.0,
+                        floor_at_zero: bool = False) -> float:
+        """
+        Calculate the Zillmerised net premium reserve for endowment assurance.
+
+        Initial expenses of ``zillmer_rate`` per unit sum assured are spread
+        over the premium term, which reduces the net premium reserve by
+        ``zillmer_rate * ä_{x+t:n-t} / ä_{x:n}``.
+
+        Args:
+            x: Original age at entry
+            n: Original term
+            duration: Number of years in force
+            zillmer_rate: Initial expense allowance per unit sum assured
+            sum_assured: Sum assured amount
+            floor_at_zero: Replace a negative reserve by zero
+
+        Returns:
+            Zillmerised reserve
+        """
+        remaining_term = n - duration
+        if remaining_term < 0:
+            return 0.0
+
         current_age = x + duration
+        annuity_now = self.sf.annuity_due(current_age, remaining_term)
+        annuity_start = self.sf.annuity_due(x, n)
 
-        remaining_assurance = self.sf.assurance(current_age) * sum_assured
-        remaining_annuity = self.sf.annuity_immediate(current_age)
+        net_premium = self.sf.endowment_assurance(x, n) / annuity_start
+        net_reserve = self.sf.endowment_assurance(current_age, remaining_term) - net_premium * annuity_now
+        reserve = sum_assured * (net_reserve - zillmer_rate * annuity_now / annuity_start)
 
-        reserve = remaining_assurance - net_premium * remaining_annuity
-
-        return max(0, reserve)
+        return self._floor(reserve, floor_at_zero)
 
     def gross_reserve(self,
                      net_reserve: float,
@@ -312,7 +334,11 @@ class Reserves:
                            duration: int,
                            amortization_period: int = 10) -> float:
         """
-        Calculate Zillmerized reserve (reserve net of unamortized acquisition costs).
+        Reduce a reserve by acquisition costs not yet recovered, writing the
+        costs off in equal instalments over the amortization period.
+
+        This is a straight-line approximation; see :meth:`zillmer_reserve`
+        for the actuarial Zillmer adjustment.
 
         Args:
             net_reserve: Net mathematical reserve
@@ -321,7 +347,7 @@ class Reserves:
             amortization_period: Period over which to amortize expenses
 
         Returns:
-            Zillmerized reserve
+            Reserve net of unamortized acquisition costs, not less than zero
         """
         if duration >= amortization_period:
             # Fully amortized
