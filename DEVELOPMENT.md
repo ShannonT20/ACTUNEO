@@ -5,7 +5,7 @@ This guide provides detailed instructions for setting up a development environme
 ## Prerequisites
 
 ### System Requirements
-- **Python**: 3.8 or higher
+- **Python**: 3.9 or higher
 - **Git**: Latest version
 - **Operating System**: Windows, macOS, or Linux
 

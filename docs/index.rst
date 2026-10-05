@@ -3,7 +3,7 @@ ACTUNEO: Comprehensive Actuarial Python Library
 
 **ACTUNEO** is an open-source, community-driven actuarial Python library that empowers African and Zimbabwean actuaries to perform core actuarial, financial, and statistical computations with ease.
 
-.. image:: https://img.shields.io/badge/python-3.8+-blue.svg
+.. image:: https://img.shields.io/badge/python-3.9+-blue.svg
    :target: https://www.python.org/downloads/
    :alt: Python Version
 
@@ -123,8 +123,8 @@ Life Insurance Calculations
 
    # Life assurance calculations
    la = LifeAssurance(mt, interest_rate=0.05)
-   premium = la.whole_life_assurance(30, sum_assured=100000)
-   print(f"Whole life premium at age 30: ${premium:.2f}")
+   premium = 100000 * la.whole_life_assurance(30)
+   print(f"Whole life single premium at age 30: ${premium:.2f}")
 
 Contents
 --------
@@ -147,6 +147,7 @@ Contents
    api/pensions
    api/ifrs17
    api/loss_reserving
+   api/zimbabwe
    api/macro_africa
    api/simulation
    api/utils

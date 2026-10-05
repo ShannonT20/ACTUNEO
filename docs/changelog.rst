@@ -3,6 +3,57 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
+Version 0.2.0 (2026-10-05)
+--------------------------
+
+Added
+~~~~~
+
+* ``actuneo.loss_reserving``: ``Triangle`` (wide and long data, cumulative and incremental
+  conversion, latest diagonal, link ratios and their averages), ``ChainLadder`` and
+  ``MackChainLadder``, with the RAA and Taylor/Ashe example triangles. Results are tested
+  against the figures published in Mack (1993) and by the R ChainLadder package
+* ``actuneo.zimbabwe``: catalogue of the Zimbabwe 2023 mortality tables and ZWL to ZiG conversion
+* ``CommutationFunctions`` (Dx, Nx, Sx, Cx, Mx, Rx)
+* ``SurvivalFunctions``: pure endowment, endowment assurance, deferred and m-thly annuities,
+  increasing assurance and annuity, net annual premiums, joint life and contingent functions,
+  payment of claims at the moment of death
+* ``LifeAssurance.last_survivor_assurance`` and ``net_annual_premium``;
+  ``Annuities.last_survivor_annuity``, ``reversionary_annuity``, ``monthly_life_annuity`` and
+  arithmetic increasing/decreasing annuities; ``Reserves.zillmer_reserve``
+* ``InterestTheory``: rate of discount, force of interest, nominal rate of discount
+* Tests that run every code example in the README and documentation
+
+Fixed
+~~~~~
+
+* Assurance values ignored survival to the year of death and were overstated
+* Temporary annuities in arrears were calculated as the annuity-due less 1
+* Net premium reserves were calculated as a ratio of assurance to annuity instead of
+  benefits less premiums; retrospective reserves were not per surviving policy
+* Joint life and last survivor values used fixed multipliers instead of joint survival probabilities
+* A guaranteed annuity was valued as an ordinary life annuity
+* ``YieldCurve.from_par_rates`` returned the par rates unchanged; it now bootstraps zero rates
+* A one-element list passed to ``MortalityTable.qx`` returned a scalar
+* Mortality data files were not declared as package data
+* Documentation examples called functions that did not exist
+
+Changed
+~~~~~~~
+
+* ``MortalityTable`` requires consecutive integer ages and derives ``lx``, ``dx``, ``Lx``,
+  ``Tx`` and ``ex`` from ``qx``; columns from the source file are available in ``published``.
+  ``life_expectancy`` no longer returns the rounded published figure
+* Survival beyond the last age of a table is zero; whole life functions on a table that ends
+  with ``qx < 1`` close the table and warn
+* Invalid ages and negative terms raise ``ValueError`` instead of returning 0
+* Reserves may be negative; pass ``floor_at_zero=True`` to floor them
+* ``Annuities.increasing_annuity`` and ``decreasing_annuity`` take a compound rate of
+  change, default 0; ``annuity_with_withdrawal`` projects a level withdrawal from a fund
+* ``LifeAssurance.reserve_*`` return net premium reserves per unit sum assured
+* matplotlib is an optional dependency (``pip install actuneo[viz]``)
+* Python 3.9 or later is required
+
 Version 0.1.2 (2026-05-12)
 --------------------------
 

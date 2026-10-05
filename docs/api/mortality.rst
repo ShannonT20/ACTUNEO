@@ -26,3 +26,12 @@ SurvivalFunctions
    :show-inheritance:
    :special-members: __init__
 
+
+CommutationFunctions
+--------------------
+
+.. autoclass:: actuneo.mortality.CommutationFunctions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__

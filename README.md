@@ -1,6 +1,6 @@
 # ACTUNEO: Comprehensive Actuarial Python Library
 
-[![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Documentation Status](https://readthedocs.org/projects/actuneo/badge/?version=latest)](https://actuneo.readthedocs.io/en/latest/?badge=latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI version](https://badge.fury.io/py/actuneo.svg)](https://badge.fury.io/py/actuneo)
@@ -14,15 +14,16 @@ ACTUNEO is an open-source, community-driven actuarial Python library that empowe
 
 ### Implemented Modules
 
-- **mortality**: Mortality tables and survival functions
+- **mortality**: Mortality tables, life contingencies and commutation functions, with the Zimbabwe 2023 tables included
 - **finance**: Interest theory, yield curve construction/interpolation, duration, and convexity
-- **life**: Life assurance, annuities, reserves, and premium calculations
+- **life**: Life assurance, annuities, premiums and reserves, for one or two lives
+- **loss_reserving**: Claims triangles, chain-ladder projection and Mack's standard error
+- **zimbabwe**: Catalogue of the Zimbabwe 2023 mortality tables and ZWL to ZiG conversion
 
 ### In Development (Scaffolding Present)
 
 - **pensions**: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
 - **ifrs17**: Insurance contract measurement models (GMM, VFA, PAA), CSM, risk adjustment, discounting
-- **loss_reserving**: Chain-ladder, Bornhuetter-Ferguson, and stochastic reserving models
 - **macro_africa**: Country-specific economic data connectors (inflation, GDP, currency exchange)
 - **simulation**: Monte Carlo simulations for stochastic actuarial models
 - **utils**: Data input-output helpers, validation, and reporting utilities
@@ -61,22 +62,20 @@ pip install -e ".[dev]"
 ### Mortality Analysis
 
 ```python
-import numpy as np
 from actuneo.mortality import MortalityTable, SurvivalFunctions
 
-# Create a mortality table
-ages = np.arange(20, 101)
-qx = 0.001 * (ages - 20) / 80  # Simplified mortality rates
-mt = MortalityTable(ages, qx, name="Example Table")
+# Zimbabwe 2023 mortality tables are included
+print(MortalityTable.zimbabwe_2023_tables())
+mt = MortalityTable.from_zimbabwe_2023("male_assured_lives")
 
-# Calculate life expectancy
 le = mt.life_expectancy(30)
 print(f"Life expectancy at age 30: {le:.1f} years")
 
-# Survival functions
-sf = SurvivalFunctions(mt, interest_rate=0.05)
-survival_prob = sf.npx(30, 20)  # Probability of surviving 20 years from age 30
-print(f"20-year survival probability: {survival_prob:.3f}")
+# Survival and life contingencies at 8% interest
+sf = SurvivalFunctions(mt, interest_rate=0.08)
+print(f"20-year survival probability from 30: {sf.npx(30, 20):.3f}")
+print(f"20-year term assurance, A30:20 = {sf.assurance(30, 20):.5f}")
+print(f"20-year annuity-due, a30:20 = {sf.annuity_due(30, 20):.4f}")
 ```
 
 ### Financial Calculations
@@ -99,17 +98,32 @@ print(f"15-year yield: {yield_15y:.3%}")
 
 ### Life Insurance Calculations
 
+Values are per unit sum assured; premiums are annual in advance.
+
 ```python
 from actuneo.life import LifeAssurance
 
-# Life assurance calculations
-la = LifeAssurance(mt, interest_rate=0.05)
-premium = la.whole_life_assurance(30, sum_assured=100000)
-print(f"Whole life premium at age 30: ${premium:.2f}")
+la = LifeAssurance(mt, interest_rate=0.08)
+sum_assured = 100_000
 
-# Reserve calculation
-reserve = la.reserve_whole_life(30, 5, annual_premium=1500)
-print(f"Reserve after 5 years: ${reserve:.2f}")
+premium = sum_assured * la.net_annual_premium(30, 20, "endowment")
+print(f"20-year endowment, annual premium at age 30: ${premium:,.2f}")
+
+reserve = sum_assured * la.reserve_endowment(30, 20, 5)
+print(f"Reserve after 5 years: ${reserve:,.2f}")
+```
+
+### Claims Triangles and Chain-Ladder
+
+```python
+from actuneo.loss_reserving import MackChainLadder, load_raa
+
+triangle = load_raa()                  # or Triangle(...) / Triangle.from_long(...)
+print(triangle.age_to_age().round(3))  # link ratios and their averages
+
+mack = MackChainLadder(triangle, est_sigma="mack")
+print(mack.summary().round(3))
+print(f"IBNR {mack.total_ibnr:,.0f} with standard error {mack.total_mack_se:,.0f}")
 ```
 
 ## Documentation

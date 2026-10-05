@@ -4,12 +4,13 @@ Installation
 Requirements
 ------------
 
-ACTUNEO requires Python 3.8 or higher and has the following dependencies:
+ACTUNEO requires Python 3.9 or higher and has the following dependencies:
 
 * numpy >= 1.21.0
 * pandas >= 1.3.0
 * scipy >= 1.7.0
-* matplotlib >= 3.4.0
+
+Plotting needs matplotlib, installed with ``pip install actuneo[viz]``.
 
 Installing from PyPI
 --------------------

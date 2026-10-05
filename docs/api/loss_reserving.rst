@@ -1,23 +1,42 @@
 Loss Reserving Module
 =====================
 
-The loss reserving module will provide general insurance reserving methods.
+Claims development triangles and chain-ladder reserving for general insurance.
 
 .. automodule:: actuneo.loss_reserving
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
-.. note::
-   This module is under development. Contributions are welcome!
+Triangle
+--------
+
+.. autoclass:: actuneo.loss_reserving.Triangle
+   :members:
+   :special-members: __init__
+
+ChainLadder
+-----------
+
+.. autoclass:: actuneo.loss_reserving.ChainLadder
+   :members:
+   :special-members: __init__
+
+MackChainLadder
+---------------
+
+.. autoclass:: actuneo.loss_reserving.MackChainLadder
+   :members:
+   :show-inheritance:
+   :special-members: __init__
+
+Example Triangles
+-----------------
+
+.. autofunction:: actuneo.loss_reserving.load_raa
+
+.. autofunction:: actuneo.loss_reserving.load_genins
 
 Planned Features
 ----------------
 
-* Chain-ladder method
-* Bornhuetter-Ferguson technique
-* Cape Cod method
-* Stochastic reserving models
-* Loss development triangles
-* IBNR estimation
-
+* Tail factor estimation and its standard error in Mack's model
+* Bornhuetter-Ferguson and Cape Cod methods
+* Bootstrap and other stochastic reserving models
