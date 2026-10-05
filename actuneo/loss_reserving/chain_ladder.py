@@ -25,8 +25,61 @@ References
 import warnings
 import numpy as np
 import pandas as pd
-from typing import Optional
+from typing import Optional, Tuple, Union
 from .triangle import Triangle
+
+
+def _loglinear_fit(values: np.ndarray) -> Optional[Tuple[float, float]]:
+    """
+    Least-squares line through log(values) against development step 1, 2, ...
+
+    Steps where the value is not positive are left out. Returns the intercept
+    and slope, or None when fewer than two steps can be used.
+    """
+    steps = np.arange(1, len(values) + 1, dtype=float)
+    usable = np.isfinite(values) & (values > 0)
+    if usable.sum() < 2:
+        return None
+    slope, intercept = np.polyfit(steps[usable], np.log(values[usable]), 1)
+    return float(intercept), float(slope)
+
+
+def estimate_tail_factor(factors, n_periods: int = 100) -> float:
+    """
+    Tail factor from an exponential decay of the development factors.
+
+    A straight line is fitted to ``log(f - 1)`` against the development step,
+    using the factors above 1, and extended for ``n_periods`` further steps.
+    The tail factor is the product of the extrapolated factors (the approach
+    of ``tail=TRUE`` in the R ChainLadder package).
+
+    Args:
+        factors: Development factors in development order
+        n_periods: Number of future development steps to extrapolate
+
+    Returns:
+        Tail factor from the last development period to ultimate
+    """
+    factors = np.asarray(factors, dtype=float)
+    fit = _loglinear_fit(factors - 1)
+    if fit is None:
+        raise ValueError("At least two development factors above 1 are needed to estimate a tail")
+    intercept, slope = fit
+    if slope >= 0:
+        raise ValueError(
+            "The development factors do not decay towards 1, so no tail factor can be "
+            "extrapolated. Supply a tail factor instead."
+        )
+    steps = np.arange(len(factors) + 1, len(factors) + 1 + n_periods)
+    tail = float(np.prod(1 + np.exp(intercept + slope * steps)))
+    if tail > 2:
+        warnings.warn(
+            f"The estimated tail factor is {tail:.3f}. A tail this large is usually "
+            "unreliable; consider supplying one.",
+            UserWarning,
+            stacklevel=3,
+        )
+    return tail
 
 
 class ChainLadder:
@@ -48,7 +101,7 @@ class ChainLadder:
                  triangle: Triangle,
                  average: str = "volume",
                  n_periods: Optional[int] = None,
-                 tail: float = 1.0):
+                 tail: Union[float, bool] = 1.0):
         """
         Fit the chain-ladder method.
 
@@ -57,18 +110,28 @@ class ChainLadder:
             average: "volume" for volume-weighted development factors,
                 "simple" for the arithmetic mean of the link ratios
             n_periods: Average only the latest n origin periods (None for all)
-            tail: Tail factor applied after the last development period
+            tail: Tail factor applied after the last development period, or
+                True to estimate it with :func:`estimate_tail_factor`
         """
         if not isinstance(triangle, Triangle):
             raise TypeError("triangle must be a Triangle")
-        if tail <= 0:
-            raise ValueError("tail must be positive")
 
         self.triangle = triangle.to_cumulative()
         self.average = average
         self.n_periods = n_periods
-        self.tail = float(tail)
-        self._fit(self._development_factors())
+        factors = self._development_factors()
+        self.tail = self._resolve_tail(tail, factors)
+        self._fit(factors)
+
+    @staticmethod
+    def _resolve_tail(tail: Union[float, bool], factors: np.ndarray) -> float:
+        if tail is True:
+            return estimate_tail_factor(factors)
+        if tail is False:
+            return 1.0
+        if tail <= 0:
+            raise ValueError("tail must be positive")
+        return float(tail)
 
     def _development_factors(self) -> np.ndarray:
         return self.triangle.development_factors(self.average, self.n_periods).to_numpy()
@@ -107,6 +170,54 @@ class ChainLadder:
     def total_ibnr(self) -> float:
         """Total reserve over all origin periods."""
         return float(self.ibnr.sum())
+
+    def reserve(self, paid_to_date: Optional[float] = None) -> float:
+        """
+        Total reserve.
+
+        Args:
+            paid_to_date: Total claims paid so far. Needed when the triangle
+                holds incurred claims, where the reserve is the projected
+                ultimate less the amount paid. If omitted, the reserve is the
+                ultimate less the latest diagonal of the triangle.
+
+        Returns:
+            Total outstanding claims reserve
+        """
+        if paid_to_date is None:
+            return self.total_ibnr
+        return float(self.ultimate.sum() - paid_to_date)
+
+    def fitted_triangle(self) -> pd.DataFrame:
+        """
+        Cumulative claims the development factors would have produced.
+
+        Each origin period starts from its actual first development period
+        and is rolled forward with the fitted development factors, over the
+        cells that have been observed.
+        """
+        tri = self.triangle
+        fitted = np.full(tri.shape, np.nan)
+        fitted[:, 0] = tri.values[:, 0]
+        for k in range(tri.n_development - 1):
+            fitted[:, k + 1] = fitted[:, k] * self._f[k]
+        fitted[np.isnan(tri.values)] = np.nan
+        return pd.DataFrame(fitted, index=self.full_triangle.index,
+                            columns=self.full_triangle.columns)
+
+    def fit_errors(self) -> pd.DataFrame:
+        """
+        Actual less fitted incremental claims, for checking the model.
+
+        Large errors, or errors of one sign along a diagonal or down a
+        column, suggest that the development pattern is not stable.
+        """
+        actual = self.triangle.to_incremental().values
+        fitted = self.fitted_triangle().to_numpy()
+        fitted_incremental = fitted.copy()
+        fitted_incremental[:, 1:] = np.diff(fitted, axis=1)
+        return pd.DataFrame(actual - fitted_incremental, index=self.full_triangle.index,
+                            columns=self.full_triangle.columns)
 
     def summary(self, total: bool = True) -> pd.DataFrame:
         """
@@ -151,6 +262,8 @@ class MackChainLadder(ChainLadder):
     Attributes:
         sigma: Estimated sigma[k] for each development step
         f_se: Standard error of each development factor
+        tail_se: Standard error of the tail factor (0 without a tail)
+        tail_sigma: Sigma of the tail development step (0 without a tail)
         process_risk: Process standard deviation of the reserve by origin period
         parameter_risk: Estimation standard error of the reserve by origin period
         mack_se: Root mean squared error of the reserve by origin period
@@ -163,7 +276,10 @@ class MackChainLadder(ChainLadder):
     def __init__(self,
                  triangle: Triangle,
                  alpha: float = 1.0,
-                 est_sigma: str = "log-linear"):
+                 est_sigma: str = "log-linear",
+                 tail: Union[float, bool] = 1.0,
+                 tail_se: Optional[float] = None,
+                 tail_sigma: Optional[float] = None):
         """
         Fit the Mack chain-ladder model.
 
@@ -178,6 +294,16 @@ class MackChainLadder(ChainLadder):
                 approximation ``min(s2**2 / s1, min(s1, s2))`` from the two
                 preceding variances. "log-linear" falls back to "mack" when
                 the regression is not significant at 5%.
+            tail: Tail factor applied after the last development period, or
+                True to estimate it with :func:`estimate_tail_factor`
+            tail_se: Standard error of the tail factor
+            tail_sigma: Sigma of the tail development step
+
+        Following Mack (1999), when ``tail_se`` or ``tail_sigma`` is not given
+        it is read off a log-linear trend of the standard errors (or sigmas)
+        of the development factors, at the development step where a factor
+        equal to the tail would sit on the log-linear trend of ``f - 1``.
+        These are judgemental quantities and should be reviewed.
         """
         if est_sigma not in ("log-linear", "mack"):
             raise ValueError("est_sigma must be 'log-linear' or 'mack'")
@@ -189,11 +315,41 @@ class MackChainLadder(ChainLadder):
         self.est_sigma = est_sigma
         self.average = {1.0: "volume", 0.0: "simple"}.get(self.alpha, f"alpha={self.alpha}")
         self.n_periods = None
-        self.tail = 1.0
 
         factors, sigma, f_se = self._estimate_parameters()
+        self.tail = self._resolve_tail(tail, factors)
+        self.tail_se, self.tail_sigma = self._tail_uncertainty(
+            factors, sigma, f_se, tail_se, tail_sigma
+        )
         self._fit(factors)
         self._standard_errors(sigma, f_se)
+
+    def _tail_uncertainty(self, factors, sigma, f_se, tail_se, tail_sigma):
+        """Standard error and sigma of the tail step, estimating those not supplied."""
+        if self.tail == 1.0:
+            return float(tail_se or 0.0), float(tail_sigma or 0.0)
+        if tail_se is not None and tail_sigma is not None:
+            return float(tail_se), float(tail_sigma)
+
+        factor_fit = _loglinear_fit(factors - 1)
+        if self.tail <= 1 or factor_fit is None or factor_fit[1] >= 0:
+            raise ValueError(
+                "tail_se and tail_sigma cannot be estimated for this tail factor; supply both"
+            )
+        # Development step at which a factor equal to the tail would sit
+        position = (np.log(self.tail - 1) - factor_fit[0]) / factor_fit[1]
+
+        def extrapolate(values, name):
+            fit = _loglinear_fit(values)
+            if fit is None:
+                raise ValueError(f"{name} cannot be estimated; supply it")
+            return float(np.exp(fit[0] + fit[1] * position))
+
+        if tail_se is None:
+            tail_se = extrapolate(f_se, "tail_se")
+        if tail_sigma is None:
+            tail_sigma = extrapolate(sigma, "tail_sigma")
+        return float(tail_se), float(tail_sigma)
 
     def _estimate_parameters(self):
         cum = self.triangle.values
@@ -283,6 +439,14 @@ class MackChainLadder(ChainLadder):
             projected = self._latest_idx <= k
             total_parameter2 = (total_parameter2 * f[k] ** 2
                                 + full[projected, k].sum() ** 2 * f_se[k] ** 2)
+
+        # The tail is one more development step, applied to every origin period
+        if self.tail != 1.0:
+            last = full[:, -1]
+            process2 = process2 * self.tail ** 2 + self.tail_sigma ** 2 * last ** (2 - self.alpha)
+            parameter2 = parameter2 * self.tail ** 2 + last ** 2 * self.tail_se ** 2
+            total_parameter2 = (total_parameter2 * self.tail ** 2
+                                + last.sum() ** 2 * self.tail_se ** 2)
 
         self.sigma = pd.Series(sigma, index=labels, name="sigma")
         self.f_se = pd.Series(f_se, index=labels, name="f_se")

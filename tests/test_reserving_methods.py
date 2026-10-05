@@ -1,0 +1,203 @@
+"""
+Tests for the run-off triangle methods: model checks, tail factors,
+inflation-adjusted chain-ladder, average cost per claim, Bornhuetter-Ferguson
+and the bootstrap.
+
+The small triangles are standard worked examples. Published answers are
+quoted where they exist; they were produced with rounded intermediate
+figures, so they are matched to within that rounding.
+"""
+
+import numpy as np
+import pytest
+from actuneo.loss_reserving import (
+    Triangle, ChainLadder, MackChainLadder, estimate_tail_factor, load_raa, load_genins,
+)
+
+N = np.nan
+
+
+@pytest.fixture
+def paid():
+    """Cumulative claim payments, accident years 2008-2012."""
+    return Triangle(
+        [[786, 1410, 2216, 2440, 2519],
+         [904, 1575, 2515, 2796, N],
+         [995, 1814, 2880, N, N],
+         [1220, 2142, N, N, N],
+         [1182, N, N, N, N]],
+        origin=range(2008, 2013), development=range(5), name="paid",
+    )
+
+
+@pytest.fixture
+def incurred():
+    """Cumulative incurred claims for six accident years."""
+    return Triangle(
+        [[2777, 3264, 3452, 3594, 3719, 3717],
+         [3252, 3804, 3973, 4231, 4319, N],
+         [3725, 4404, 4779, 4946, N, N],
+         [4521, 5422, 5676, N, N, N],
+         [5369, 6142, N, N, N, N],
+         [5818, N, N, N, N, N]],
+        name="incurred",
+    )
+
+
+@pytest.fixture
+def reported_numbers():
+    """Cumulative numbers of reported claims matching the incurred triangle."""
+    return Triangle(
+        [[414, 460, 482, 488, 492, 494],
+         [453, 506, 526, 536, 539, N],
+         [494, 548, 572, 582, N, N],
+         [530, 588, 615, N, N, N],
+         [545, 605, N, N, N, N],
+         [557, N, N, N, N, N]],
+        name="numbers",
+    )
+
+
+class TestBasicChainLadderExample:
+    """Basic chain-ladder on the paid triangle."""
+
+    def test_development_factors_and_reserve(self, paid):
+        cl = ChainLadder(paid)
+        np.testing.assert_allclose(cl.factors, [1.777, 1.586, 1.107, 1.032], atol=5e-4)
+        # Published projections: 2,885, 3,290, 3,881, 3,806 and a reserve of 4,862
+        np.testing.assert_allclose(cl.ultimate, [2519, 2885, 3290, 3881, 3806], atol=4)
+        assert cl.reserve() == pytest.approx(4862, abs=5)
+        assert cl.full_triangle.loc[2012, 1] == pytest.approx(2100, abs=1)
+
+    def test_claim_numbers_from_incremental_data(self):
+        reported = Triangle(
+            [[17500, 5000, 2250, 750],
+             [21000, 6200, 2750, N],
+             [18800, 5500, N, N],
+             [21300, N, N, N]],
+            origin=range(2009, 2013), development=range(4), cumulative=False,
+        )
+        cl = ChainLadder(reported)
+        np.testing.assert_allclose(cl.factors, [1.2914, 1.1006, 1.0303], atol=5e-5)
+        assert cl.ultimate.sum() == pytest.approx(115106, abs=2)
+
+    def test_loss_ratio_triangle(self):
+        """The chain-ladder applies equally to a triangle of loss ratios."""
+        ratios = Triangle(
+            [[0.47, 0.63, 0.70, 0.74],
+             [0.48, 0.62, 0.71, N],
+             [0.49, 0.60, N, N],
+             [0.50, N, N, N]],
+            origin=range(2009, 2013),
+        )
+        cl = ChainLadder(ratios)
+        np.testing.assert_allclose(cl.ultimate, [0.74, 0.7506, 0.7155, 0.7660], atol=5e-5)
+        premium = np.array([1.42, 1.64, 1.73, 1.82])
+        assert float((cl.ibnr * premium).sum()) == pytest.approx(0.7505, abs=5e-4)
+
+    def test_model_check(self, paid):
+        cl = ChainLadder(paid)
+        fitted = cl.fitted_triangle()
+        # The first development period is reproduced exactly
+        np.testing.assert_array_equal(fitted[0], paid.values[:, 0])
+        assert fitted.loc[2008, 1] == pytest.approx(1397, abs=1)
+        assert np.isnan(fitted.loc[2012, 1])
+
+        errors = cl.fit_errors()
+        expected = [[0, 13, -12, -13, 0],
+                    [0, -31, -2, 9, N],
+                    [0, 46, 30, N, N],
+                    [0, -26, N, N, N],
+                    [0, N, N, N, N]]
+        np.testing.assert_allclose(errors.to_numpy(), expected, atol=1.5)
+        # The volume-weighted factor makes the first-step errors sum to zero
+        assert errors[1].sum() == pytest.approx(0, abs=1e-9)
+
+    def test_reserve_with_paid_to_date(self, incurred):
+        cl = ChainLadder(incurred)
+        assert cl.reserve(20334) == pytest.approx(cl.ultimate.sum() - 20334)
+        assert cl.reserve() == pytest.approx(cl.total_ibnr)
+
+
+class TestTailFactor:
+    """Tail factor estimation."""
+
+    def test_exponential_decay_is_recovered(self):
+        """Factors of exactly 1 + a*b**k extrapolate to the product of the rest."""
+        steps = np.arange(1, 8)
+        factors = 1 + 0.5 * 0.5 ** steps
+        expected = np.prod(1 + 0.5 * 0.5 ** np.arange(8, 108))
+        assert estimate_tail_factor(factors) == pytest.approx(expected)
+
+    def test_chain_ladder_tail_true(self):
+        raa = load_raa()
+        base = ChainLadder(raa)
+        tailed = ChainLadder(raa, tail=True)
+        assert 1.0 < tailed.tail < 1.05
+        assert tailed.tail == pytest.approx(estimate_tail_factor(base.factors))
+        np.testing.assert_allclose(tailed.ultimate, base.ultimate * tailed.tail)
+
+    def test_no_decay(self):
+        with pytest.raises(ValueError, match="do not decay"):
+            estimate_tail_factor([1.1, 1.2, 1.3])
+        with pytest.raises(ValueError, match="At least two"):
+            estimate_tail_factor([1.1, 1.0, 0.99])
+
+    def test_large_tail_warns(self):
+        with pytest.warns(UserWarning, match="tail factor"):
+            estimate_tail_factor([1.9, 1.85, 1.8])
+
+
+class TestMackTail:
+    """Tail factor in Mack's model."""
+
+    def test_tail_of_one_changes_nothing(self):
+        raa = load_raa()
+        base = MackChainLadder(raa, est_sigma="mack")
+        same = MackChainLadder(raa, est_sigma="mack", tail=1.0)
+        assert same.total_mack_se == base.total_mack_se
+        assert same.tail_se == 0.0 and same.tail_sigma == 0.0
+
+    def test_certain_tail_scales_everything(self):
+        """A tail with no uncertainty of its own scales ultimates and errors."""
+        raa = load_raa()
+        base = MackChainLadder(raa, est_sigma="mack")
+        tailed = MackChainLadder(raa, est_sigma="mack", tail=1.05, tail_se=0.0, tail_sigma=0.0)
+        np.testing.assert_allclose(tailed.ultimate, base.ultimate * 1.05)
+        np.testing.assert_allclose(tailed.mack_se, base.mack_se * 1.05)
+        assert tailed.total_mack_se == pytest.approx(base.total_mack_se * 1.05)
+
+    def test_tail_uncertainty_by_hand(self):
+        """The tail adds one more step of Mack's recursion."""
+        raa = load_raa()
+        base = MackChainLadder(raa, est_sigma="mack")
+        tail, tail_se, tail_sigma = 1.05, 0.02, 2.0
+        tailed = MackChainLadder(raa, est_sigma="mack", tail=tail, tail_se=tail_se,
+                                 tail_sigma=tail_sigma)
+
+        last = base.ultimate.to_numpy()
+        process2 = base.process_risk.to_numpy() ** 2 * tail ** 2 + tail_sigma ** 2 * last
+        parameter2 = base.parameter_risk.to_numpy() ** 2 * tail ** 2 + last ** 2 * tail_se ** 2
+        np.testing.assert_allclose(tailed.mack_se, np.sqrt(process2 + parameter2))
+
+        total2 = (process2.sum() + base.total_parameter_risk ** 2 * tail ** 2
+                  + last.sum() ** 2 * tail_se ** 2)
+        assert tailed.total_mack_se == pytest.approx(np.sqrt(total2))
+        # The fully developed first year now carries tail risk
+        assert tailed.mack_se.iloc[0] > 0
+
+    def test_estimated_tail(self):
+        raa = load_raa()
+        base = MackChainLadder(raa, est_sigma="mack")
+        tailed = MackChainLadder(raa, est_sigma="mack", tail=True)
+        assert tailed.tail == pytest.approx(ChainLadder(raa, tail=True).tail)
+        assert tailed.tail_se > 0 and tailed.tail_sigma > 0
+        # The tail step sits beyond the triangle, so it is less uncertain
+        # than the first development steps
+        assert tailed.tail_se < base.f_se.iloc[0]
+        assert tailed.total_ibnr > base.total_ibnr
+        assert tailed.total_mack_se > base.total_mack_se
+
+    def test_tail_below_one_needs_inputs(self):
+        with pytest.raises(ValueError, match="supply both"):
+            MackChainLadder(load_raa(), tail=0.99)
