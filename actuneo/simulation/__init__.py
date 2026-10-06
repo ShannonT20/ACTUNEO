@@ -1,10 +1,24 @@
 """
 Simulation Module
 
-Monte Carlo simulations for stochastic actuarial models.
+Monte Carlo simulation for general insurance.
 
-TODO: Implement Monte Carlo simulation methods for actuarial modeling.
+This module provides tools for:
+
+- Simulating aggregate claims from a frequency and a severity distribution
+  (the collective risk model), with risk measures
+- Simulating individual claims with payment delays, inflation and changes
+  in settlement speed, to produce claims triangles whose true ultimate cost
+  is known. These are for testing reserving methods.
+
+The results depend on the random seed. Fix it to reproduce a run.
 """
 
-# Placeholder - to be implemented
-__all__ = []
+from .aggregate import simulate_aggregate_claims, AggregateClaims
+from .claims import ClaimsSimulator
+
+__all__ = [
+    'simulate_aggregate_claims',
+    'AggregateClaims',
+    'ClaimsSimulator',
+]
