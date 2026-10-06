@@ -10,11 +10,13 @@ Modules:
 - finance: Interest theory, yield curve construction, duration, and convexity measures
 - loss_reserving: Claims triangles, chain-ladder, inflation-adjusted chain-ladder, average cost
   per claim, Bornhuetter-Ferguson, Mack's standard error and bootstrap
+- ifrs17: Premium allocation approach, liability for incurred claims, risk adjustment,
+  reinsurance held and the IFRS 17 financial statements
 - zimbabwe: Zimbabwe 2023 mortality table catalogue and currency reference data
 
 Planned modules (not yet implemented):
 - pensions: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
-- ifrs17: Measurement models (GMM, VFA, PAA), CSM, risk adjustment, discounting
+- ifrs17 (further): General measurement model and variable fee approach, with the CSM
 - macro_africa: Country-specific economic data connectors (inflation, GDP, currency exchange)
 - simulation: Monte Carlo simulations for stochastic actuarial models
 - utils: Excel/CSV input-output functions, validation, and reporting
@@ -32,6 +34,7 @@ from . import mortality
 from . import finance
 from . import life
 from . import loss_reserving
+from . import ifrs17
 from . import zimbabwe
 # Other modules will be imported as they are developed
 
@@ -40,6 +43,7 @@ __all__ = [
     'finance',
     'life',
     'loss_reserving',
+    'ifrs17',
     'zimbabwe',
     # Add other modules as they are implemented
 ]
