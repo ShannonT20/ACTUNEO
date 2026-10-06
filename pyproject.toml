@@ -77,6 +77,7 @@ include = ["actuneo*"]
 
 [tool.setuptools.package-data]
 "actuneo.mortality" = ["data/**/*.csv"]
+"actuneo.ifrs17" = ["data/**/*.csv"]
 
 [tool.black]
 line-length = 100

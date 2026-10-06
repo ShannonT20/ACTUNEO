@@ -88,7 +88,7 @@ class IFRS17Statements:
         # Adding zero turns any negative zero into a plain zero
         return pd.DataFrame(rows, index=pd.Index(self.periods, name="period")).T + 0.0
 
-    def profit_or_loss(self, detailed: bool = False) -> pd.DataFrame:
+    def profit_or_loss(self, detailed: bool = False, total: bool = False) -> pd.DataFrame:
         """
         Statement of profit or loss and other comprehensive income, one
         column per reporting period. Income is positive and expenses are
@@ -101,6 +101,7 @@ class IFRS17Statements:
         Args:
             detailed: Show the components of insurance service expenses on
                 the face of the statement
+            total: Add a "Total" column for all the periods together
         """
         revenue = self._sum(self.groups, "profit_or_loss", "insurance_revenue")
         service_expenses = self._sum(self.groups, "profit_or_loss", "insurance_service_expenses")
@@ -138,7 +139,10 @@ class IFRS17Statements:
             "Other comprehensive income": oci,
             "Total comprehensive income": profit + oci,
         })
-        return self._table(rows)
+        table = self._table(rows)
+        if total:
+            table["Total"] = table.sum(axis=1)
+        return table
 
     _EXPENSE_LINES = (
         ("Incurred claims and other insurance service expenses",
@@ -181,8 +185,13 @@ class IFRS17Statements:
                                                    + reinsurance_oci + self.investment_return),
         })
 
-    def cash_flows(self) -> pd.DataFrame:
-        """Statement of cash flows (direct method), one column per reporting period."""
+    def cash_flows(self, total: bool = False) -> pd.DataFrame:
+        """
+        Statement of cash flows (direct method), one column per reporting period.
+
+        Args:
+            total: Add a "Total" column for all the periods together
+        """
         profit = self.profit_or_loss()
         rows = {
             "Premiums received": self._sum(self.groups, "cash_flows", "premiums_received"),
@@ -205,7 +214,12 @@ class IFRS17Statements:
             ([self.opening_cash], closing[:-1])
         )
         rows["Cash and investments at end of period"] = closing
-        return self._table(rows)
+        table = self._table(rows)
+        if total:
+            table["Total"] = table.sum(axis=1)
+            table.loc["Cash and investments at start of period", "Total"] = self.opening_cash
+            table.loc["Cash and investments at end of period", "Total"] = closing[-1]
+        return table
 
     def _by_portfolio(self, items) -> tuple:
         """Totals of portfolios in a positive position and in a negative position."""
@@ -247,19 +261,29 @@ class IFRS17Statements:
             "Total liabilities and equity": total_liabilities + total_equity,
         })
 
-    def changes_in_equity(self) -> pd.DataFrame:
-        """Statement of changes in equity, one column per reporting period."""
+    def changes_in_equity(self, total: bool = False) -> pd.DataFrame:
+        """
+        Statement of changes in equity, one column per reporting period.
+
+        Args:
+            total: Add a "Total" column for all the periods together
+        """
         performance = self.profit_or_loss()
         profit = performance.loc["Profit for the period"].to_numpy()
         oci = performance.loc["Other comprehensive income"].to_numpy()
         closing = self.opening_equity + np.cumsum(profit + oci)
-        return self._table({
+        table = self._table({
             "Equity at start of period": np.concatenate(([self.opening_equity], closing[:-1])),
             "Profit for the period": profit,
             "Other comprehensive income": oci,
             "Total comprehensive income": profit + oci,
             "Equity at end of period": closing,
         })
+        if total:
+            table["Total"] = table.sum(axis=1)
+            table.loc["Equity at start of period", "Total"] = self.opening_equity
+            table.loc["Equity at end of period", "Total"] = closing[-1]
+        return table
 
     def supplementary_position(self) -> pd.DataFrame:
         """
@@ -284,25 +308,183 @@ class IFRS17Statements:
         difference = position.loc["Total assets"] - position.loc["Total liabilities and equity"]
         return float(difference.abs().max())
 
-    def key_ratios(self) -> pd.DataFrame:
+    def key_ratios(self, total: bool = False) -> pd.DataFrame:
         """
-        Performance ratios on insurance revenue for each period: claims
-        ratio, expense ratio, reinsurance ratio and combined ratio.
+        Performance ratios on insurance revenue for each period.
+
+        The combined ratio is insurance service expenses divided by insurance
+        revenue, the base calculation most non-life insurers now use. Two
+        common variants are also given: net of the result of reinsurance
+        held, and including expenses that are not directly attributable to
+        insurance contracts. Insurers define these ratios differently, so
+        state the definition when quoting one.
+
+        Args:
+            total: Add a "Total" column calculated on the totals of all the
+                periods (not an average of the period ratios)
         """
-        revenue = self._sum(self.groups, "profit_or_loss", "insurance_revenue")
-        claims = -(self._sum(self.groups, "profit_or_loss", "incurred_claims_and_other_expenses")
-                   + self._sum(self.groups, "profit_or_loss", "adjustments_to_lic")
-                   + self._sum(self.groups, "profit_or_loss", "losses_on_onerous_contracts"))
-        acquisition = -self._sum(self.groups, "profit_or_loss",
-                                 "amortisation_of_acquisition_cash_flows")
-        reinsurance = -self._sum(self.reinsurance, "profit_or_loss",
-                                 "net_expenses_from_reinsurance_contracts")
+        def series(items, table, column):
+            values = self._sum(items, table, column)
+            return np.append(values, values.sum()) if total else values
+
+        revenue = series(self.groups, "profit_or_loss", "insurance_revenue")
+        claims = -(series(self.groups, "profit_or_loss", "incurred_claims_and_other_expenses")
+                   + series(self.groups, "profit_or_loss", "adjustments_to_lic")
+                   + series(self.groups, "profit_or_loss", "losses_on_onerous_contracts"))
+        acquisition = -series(self.groups, "profit_or_loss",
+                              "amortisation_of_acquisition_cash_flows")
+        reinsurance = -series(self.reinsurance, "profit_or_loss",
+                              "net_expenses_from_reinsurance_contracts")
+        other = self.other_operating_expenses
+        other = np.append(other, other.sum()) if total else other
+
         with np.errstate(divide="ignore", invalid="ignore"):
             rows = {
                 "Claims ratio": claims / revenue,
                 "Acquisition expense ratio": acquisition / revenue,
-                "Other expense ratio": self.other_operating_expenses / revenue,
+                "Combined ratio": (claims + acquisition) / revenue,
                 "Net reinsurance ratio": reinsurance / revenue,
+                "Combined ratio net of reinsurance": (claims + acquisition + reinsurance) / revenue,
+                "Other expense ratio": other / revenue,
+                "Combined ratio including other expenses":
+                    (claims + acquisition + reinsurance + other) / revenue,
             }
-            rows["Combined ratio"] = np.sum(list(rows.values()), axis=0)
-        return self._table(rows)
+        columns = self.periods + (["Total"] if total else [])
+        return pd.DataFrame(rows, index=pd.Index(columns, name="period")).T + 0.0
+
+    # ------------------------------------------------------------------
+    # Presentation
+    # ------------------------------------------------------------------
+    _REFERENCES = {
+        "Insurance revenue": "IFRS 17.83",
+        "Insurance service expenses": "IFRS 17.84",
+        "Net expenses from reinsurance contracts": "IFRS 17.86",
+        "Insurance service result": "IFRS 17.80(a)",
+        "Net finance expenses from insurance contracts": "IFRS 17.80(b)",
+        "Net finance income from reinsurance contracts": "IFRS 17.82",
+        "Other comprehensive income": "IFRS 17.90",
+        "Insurance contract assets": "IFRS 17.78(a)",
+        "Insurance contract liabilities": "IFRS 17.78(b)",
+        "Reinsurance contract assets": "IFRS 17.78(c)",
+        "Reinsurance contract liabilities": "IFRS 17.78(d)",
+        "Insurance finance reserve": "IFRS 17.91",
+    }
+
+    def presentation(self, entity: str = "", currency: str = "") -> dict:
+        """
+        The statements laid out for publication, as formatted sheets for
+        :func:`actuneo.utils.write_report`.
+
+        The layout follows the usual presentation of an insurer's accounts:
+        an insurance service result, then the net financial result; and a
+        statement of financial position in order of liquidity with assets,
+        liabilities and equity as sections.
+
+        Args:
+            entity: Name of the reporting entity
+            currency: Currency of the amounts, shown under each heading
+
+        Returns:
+            Dictionary of sheet name to :class:`actuneo.utils.Sheet`
+        """
+        from ..utils import Sheet, RATIO_FORMAT
+
+        unit = f"In {currency}" if currency else ""
+        span = (f"For the periods {self.periods[0]} to {self.periods[-1]}"
+                if len(self.periods) > 1 else f"For the period {self.periods[0]}")
+        flow = ". ".join(x for x in (span, unit) if x)
+        point = ". ".join(x for x in ("At the end of each period", unit) if x)
+
+        position = self.financial_position()
+        blank = pd.DataFrame(np.nan, index=["Assets", "Liabilities", "Equity"],
+                             columns=position.columns)
+        ordered = pd.concat([
+            blank.loc[["Assets"]], position.loc["Cash and investments":"Total assets"],
+            blank.loc[["Liabilities"]],
+            position.loc["Insurance contract liabilities":"Total liabilities"],
+            blank.loc[["Equity"]],
+            position.loc["Share capital and opening reserves":"Total liabilities and equity"],
+        ])
+        ordered.index.name = "period"
+
+        return {
+            "Statement of profit or loss": Sheet(
+                self.profit_or_loss(detailed=True, total=True),
+                "Statement of profit or loss and other comprehensive income", flow,
+                total_rows=["Insurance service expenses", "Insurance service result",
+                            "Net financial result", "Profit before tax",
+                            "Profit for the period", "Total comprehensive income"],
+                references=self._REFERENCES,
+            ),
+            "Statement of financial position": Sheet(
+                ordered, "Statement of financial position", point,
+                total_rows=["Total assets", "Total liabilities", "Total equity",
+                            "Total liabilities and equity"],
+                section_rows=["Assets", "Liabilities", "Equity"],
+                references=self._REFERENCES,
+            ),
+            "Statement of cash flows": Sheet(
+                self.cash_flows(total=True), "Statement of cash flows", flow,
+                total_rows=["Net increase in cash and investments",
+                            "Cash and investments at end of period"],
+            ),
+            "Statement of changes in equity": Sheet(
+                self.changes_in_equity(total=True), "Statement of changes in equity", flow,
+                total_rows=["Total comprehensive income", "Equity at end of period"],
+            ),
+            "Note - Insurance service expenses": Sheet(
+                self.insurance_service_expenses().assign(
+                    Total=lambda t: t.sum(axis=1)),
+                "Insurance service expenses", flow,
+                total_rows=["Insurance service expenses"],
+                references={"Insurance service expenses": "IFRS 17.103(b)"},
+            ),
+            "Note - Finance income and expenses": Sheet(
+                self.finance_income_and_expenses().assign(Total=lambda t: t.sum(axis=1)),
+                "Insurance finance income and expenses", flow,
+                total_rows=["Net finance expenses from insurance contracts",
+                            "Net finance income from reinsurance contracts",
+                            "Net financial result including OCI"],
+                references={"Net finance expenses from insurance contracts": "IFRS 17.110"},
+            ),
+            "Key ratios": Sheet(
+                self.key_ratios(total=True), "Key ratios", span,
+                number_format=RATIO_FORMAT,
+                total_rows=["Combined ratio", "Combined ratio net of reinsurance",
+                            "Combined ratio including other expenses"],
+                note="Combined ratio = insurance service expenses / insurance revenue. "
+                     "Insurers define these ratios differently.",
+            ),
+            "Supplementary - IFRS 4 view": Sheet(
+                self.supplementary_position(),
+                "Insurance contract liabilities by component", point,
+                total_rows=["Net insurance contract liabilities"],
+                note="Supplementary information. IFRS 17 presents one carrying amount; "
+                     "these are the components reported under IFRS 4.",
+            ),
+        }
+
+    def to_excel(self, path: str, entity: str = "", currency: str = "") -> None:
+        """
+        Write the statements and notes to a formatted Excel workbook (needs
+        openpyxl).
+
+        Args:
+            path: File name of the workbook, ending in .xlsx
+            entity: Name of the reporting entity
+            currency: Currency of the amounts
+        """
+        from ..utils import write_report
+        write_report(path, self.presentation(entity, currency),
+                     report_title=entity or "IFRS 17 financial statements",
+                     report_subtitle="Premium allocation approach",
+                     notes=_REPORT_NOTES)
+
+
+_REPORT_NOTES = (
+    "Prepared with ACTUNEO from the inputs supplied. The calculation follows the premium "
+    "allocation approach of IFRS 17.",
+    "ACTUNEO has not been independently reviewed and is not certified for statutory or "
+    "audited reporting. Check these figures against an independent calculation before "
+    "relying on them.",
+)

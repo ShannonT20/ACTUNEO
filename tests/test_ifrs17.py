@@ -445,6 +445,15 @@ class TestReinsuranceHeld:
         change = np.diff(np.concatenate(([0.0], reinsurance.carrying_amount)))
         np.testing.assert_allclose(change, result - cash)
 
+    def test_rollforwards(self, reinsurance):
+        arc = reinsurance.arc_rollforward()
+        np.testing.assert_allclose(arc.drop(columns="closing").sum(axis=1), arc["closing"])
+        np.testing.assert_allclose(arc["closing"], [187, 122, 60, 0])
+        aic = reinsurance.aic_rollforward()
+        np.testing.assert_allclose(aic.drop(columns="closing").sum(axis=1), aic["closing"])
+        np.testing.assert_allclose(aic["closing"], [20, 26, 24, 38])
+        np.testing.assert_allclose(arc["closing"] + aic["closing"], reinsurance.carrying_amount)
+
     def test_loss_recovery_for_quota_share(self, group):
         """A 20% quota share recovers 20% of the loss on the onerous underlying group."""
         ceded = PAAReinsuranceHeld([240, 0, 0, 0],
@@ -528,10 +537,71 @@ class TestFinancialStatements:
         np.testing.assert_allclose(ratios.loc["Claims ratio"],
                                    [245 / 300, 222 / 300, 140 / 300, 215 / 300])
         profit = statements.profit_or_loss()
-        # Combined ratio above 100% goes with an underwriting loss after other expenses
+        # The base combined ratio is insurance service expenses over insurance revenue
+        np.testing.assert_allclose(ratios.loc["Combined ratio"],
+                                   -profit.loc["Insurance service expenses"] / 300)
+        np.testing.assert_allclose(1 - ratios.loc["Combined ratio net of reinsurance"],
+                                   profit.loc["Insurance service result"] / 300)
         underwriting = (profit.loc["Insurance service result"]
                         + profit.loc["Other operating expenses"])
-        np.testing.assert_allclose(1 - ratios.loc["Combined ratio"], underwriting / 300)
+        np.testing.assert_allclose(1 - ratios.loc["Combined ratio including other expenses"],
+                                   underwriting / 300)
+
+    def test_totals(self, statements):
+        profit = statements.profit_or_loss(total=True)
+        assert profit.loc["Insurance revenue", "Total"] == 1200
+        assert profit.loc["Profit for the period", "Total"] == pytest.approx(57.5)
+        cash = statements.cash_flows(total=True)
+        assert cash.loc["Cash and investments at start of period", "Total"] == 500
+        assert cash.loc["Cash and investments at end of period", "Total"] == 719.5
+        assert cash.loc["Net increase in cash and investments", "Total"] == pytest.approx(219.5)
+        equity = statements.changes_in_equity(total=True)
+        assert equity.loc["Equity at start of period", "Total"] == 500
+        assert equity.loc["Equity at end of period", "Total"] == 557.5
+        # The total ratio is calculated on the totals, not averaged
+        ratios = statements.key_ratios(total=True)
+        assert ratios.loc["Claims ratio", "Total"] == pytest.approx((245 + 222 + 140 + 215) / 1200)
+
+    def test_reconciliation_for_the_whole_span(self, group, reinsurance):
+        table = group.reconciliation("all")
+        np.testing.assert_allclose(table.loc["Opening liabilities"], 0)
+        np.testing.assert_allclose(table.loc["Closing liabilities"], [0, 0, 185, 15, 200])
+        assert table.loc["Insurance revenue", "total"] == -1200
+        closing = (table.loc["Opening liabilities"] + table.loc["Total changes in profit or loss"]
+                   + table.loc["Total cash flows"])
+        np.testing.assert_allclose(closing, table.loc["Closing liabilities"])
+
+        ceded = reinsurance.reconciliation("all")
+        assert ceded.loc["Closing assets", "total"] == 38
+        for period in QUARTERS:
+            one = reinsurance.reconciliation(period)
+            np.testing.assert_allclose(
+                one.loc["Opening assets"] + one.loc["Total changes in profit or loss"]
+                + one.loc["Total cash flows"], one.loc["Closing assets"])
+            assert one.loc["Net expenses from reinsurance contracts", "total"] == pytest.approx(
+                reinsurance.profit_or_loss().loc[period,
+                                                 "net_expenses_from_reinsurance_contracts"])
+
+    def test_formatted_workbook(self, statements, tmp_path):
+        openpyxl = pytest.importorskip("openpyxl")
+        path = tmp_path / "accounts.xlsx"
+        statements.to_excel(str(path), entity="Test Insurer", currency="USD")
+        book = openpyxl.load_workbook(path)
+        assert book.sheetnames[0] == "Contents"
+        assert "Statement of profit or loss" in book.sheetnames
+        assert "Statement of financial position" in book.sheetnames
+        sheet = book["Statement of financial position"]
+        labels = [c.value for c in sheet["A"]]
+        assert labels[0] == "Test Insurer"
+        for section in ("Assets", "Liabilities", "Equity"):
+            assert section in labels
+        row = labels.index("Total assets") + 1
+        assert sheet.cell(row=row, column=1).font.bold
+        # Reference column, then the first period
+        assert sheet.cell(row=labels.index("Insurance contract liabilities") + 1,
+                          column=2).value == "IFRS 17.78(b)"
+        assert sheet.cell(row=row, column=3).value == pytest.approx(1397)
+        assert "(" in sheet.cell(row=row, column=3).number_format
 
     def test_invalid(self, group):
         with pytest.raises(ValueError, match="same reporting periods"):
@@ -944,3 +1014,132 @@ class TestSignificantFinancingComponent:
             PAAGroup([1000, 0], insurance_revenue=[500, 500], lrc_discount_rate=0.05)
         with pytest.raises(ValueError, match="whole of the remaining cover"):
             PAAGroup([1000, 0], revenue_pattern=[0.25, 0.25], lrc_discount_rate=0.05)
+
+
+class TestGrowingGroups:
+    """Groups to which policies are added during the year."""
+
+    def test_acquisition_costs_follow_the_earning_of_each_policy(self):
+        """15% commission is amortised as 15% of revenue, whatever is sold later."""
+        written = [100.0, 200.0, 0.0]
+        revenue = [50.0, 150.0, 100.0]
+        g = PAAGroup(premiums_received=written, premiums_written=written,
+                     insurance_revenue=revenue, acquisition_cash_flows=[15.0, 30.0, 0.0])
+        np.testing.assert_allclose(g.amortisation, [7.5, 22.5, 15.0])
+        np.testing.assert_allclose(g.unearned_premium, [50, 100, 0])
+        np.testing.assert_allclose(g.lrc, [42.5, 85, 0])
+        view = g.supplementary_position()
+        np.testing.assert_allclose(view["premiums_receivable"], 0, atol=1e-9)
+
+    def test_invalid(self):
+        with pytest.raises(ValueError, match="requires insurance_revenue"):
+            PAAGroup([100, 0], premiums_written=[100, 0])
+
+
+class TestCaseFiles:
+    """Running a calculation from input files."""
+
+    def test_example_case(self):
+        from actuneo.ifrs17 import load_paa_case, example_case_path
+        case = load_paa_case(example_case_path())
+        assert list(case.groups) == ["Motor 2026", "Fire 2026"]
+        assert list(case.reinsurance) == ["Motor quota share"]
+        assert case.periods[0] == "Jan" and len(case.periods) == 12
+        assert case.statements.balance_check() == pytest.approx(0, abs=1e-6)
+        assert "Kopje" in repr(case)
+
+        motor, fire = case.groups["Motor 2026"], case.groups["Fire 2026"]
+        # Commission of 15% is amortised with revenue
+        np.testing.assert_allclose(motor.amortisation, 0.15 * motor.insurance_revenue, atol=1)
+        # Motor is not onerous, fire is
+        assert motor.loss_component.max() == 0
+        assert (fire.loss_component > 0).all()
+        # Premiums are received before cover starts: nothing is receivable
+        np.testing.assert_allclose(
+            motor.supplementary_position()["premiums_receivable"], 0, atol=1e-6
+        )
+
+    def test_report_has_periods_in_columns(self):
+        from actuneo.ifrs17 import load_paa_case, example_case_path
+        case = load_paa_case(example_case_path())
+        tables = case.report(total=False)
+        for title, table in tables.items():
+            if not title.endswith("Reconciliation"):
+                assert list(table.columns) == case.periods
+        assert list(case.report()["Profit or loss"].columns) == case.periods + ["Total"]
+        assert tables["Motor 2026 - Reconciliation"].loc["Closing liabilities", "total"] == \
+            pytest.approx(case.groups["Motor 2026"].carrying_amount[-1])
+        roll = tables["Motor 2026 - LRC"]
+        np.testing.assert_allclose(roll.loc["opening"].iloc[1:], roll.loc["closing"].iloc[:-1])
+        np.testing.assert_allclose(roll.drop(index="closing").sum(), roll.loc["closing"])
+        arc = tables["Motor quota share - ARC"]
+        np.testing.assert_allclose(arc.drop(index="closing").sum(), arc.loc["closing"])
+
+    def test_copy_edit_and_reload(self, tmp_path):
+        from actuneo.ifrs17 import load_paa_case, copy_example_case
+        folder = copy_example_case(str(tmp_path / "case"))
+        assert sorted(p.name for p in folder.iterdir()) == [
+            "data.csv", "entity.csv", "groups.csv", "settings.csv"
+        ]
+        base = load_paa_case(str(folder))
+
+        data = pd.read_csv(folder / "data.csv")
+        # Administration costs go straight to profit or loss
+        data.loc[data["group"] == "Fire 2026", "other_insurance_service_expenses"] *= 3
+        data.to_csv(folder / "data.csv", index=False)
+        worse = load_paa_case(str(folder))
+        profit = "Profit before tax"
+        assert (worse.statements.profit_or_loss().loc[profit].sum()
+                < base.statements.profit_or_loss().loc[profit].sum())
+        with pytest.raises(FileExistsError):
+            copy_example_case(str(folder))
+
+    def test_excel_round_trip(self, tmp_path):
+        pytest.importorskip("openpyxl")
+        from actuneo.ifrs17 import load_paa_case, example_case_path
+        source = example_case_path()
+        workbook = tmp_path / "case.xlsx"
+        with pd.ExcelWriter(workbook) as writer:
+            for name in ("settings", "groups", "data", "entity"):
+                pd.read_csv(source / f"{name}.csv").to_excel(writer, sheet_name=name, index=False)
+        from_excel = load_paa_case(str(workbook))
+        from_csv = load_paa_case(source)
+        pd.testing.assert_frame_equal(from_excel.statements.financial_position(),
+                                      from_csv.statements.financial_position())
+
+        results = tmp_path / "results.xlsx"
+        from_csv.to_excel(str(results))
+        import openpyxl
+        book = openpyxl.load_workbook(results)
+        assert book.sheetnames[0] == "Contents"
+        for expected in ("Statement of profit or loss", "Statement of financial position",
+                         "Key ratios", "Motor 2026 - LRC", "Fire 2026 - Reconciliation",
+                         "Motor quota share - ARC"):
+            assert expected in book.sheetnames
+        # Every sheet is listed, with a link, on the contents page
+        links = [c.value for c in book["Contents"]["A"] if c.hyperlink]
+        assert len(links) == len(book.sheetnames) - 1
+        sheet = book["Statement of profit or loss"]
+        header = [c.value for c in sheet[5] if c.value is not None]
+        assert header[0] == "Reference" and header[1] == "Jan" and header[-1] == "Total"
+        assert sheet["A1"].value.startswith("Kopje")
+
+    def test_invalid_cases(self, tmp_path):
+        from actuneo.ifrs17 import load_paa_case, copy_example_case
+        with pytest.raises(FileNotFoundError):
+            load_paa_case(str(tmp_path / "missing"))
+
+        folder = copy_example_case(str(tmp_path / "case"))
+        data = pd.read_csv(folder / "data.csv")
+        data[data["period"] != "Dec"].to_csv(folder / "data.csv", index=False)
+        with pytest.raises(ValueError, match="one row for every period"):
+            load_paa_case(str(folder))
+
+        data.assign(surprise=1).to_csv(folder / "data.csv", index=False)
+        with pytest.raises(ValueError, match="unknown column"):
+            load_paa_case(str(folder))
+
+        data.loc[3, "incurred_claims"] = np.nan
+        data.to_csv(folder / "data.csv", index=False)
+        with pytest.raises(ValueError, match="empty cells"):
+            load_paa_case(str(folder))

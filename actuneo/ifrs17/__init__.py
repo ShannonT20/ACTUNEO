@@ -12,6 +12,7 @@ This module provides tools for:
 - Reinsurance contracts held under the PAA
 - The IFRS 17 reconciliations and the primary financial statements
 - Earning premiums from a policy listing
+- Running a whole calculation from CSV or Excel input files
 - Grouping contracts by portfolio, cohort and profitability
 - Disclosure tables: claims development, maturity analysis and sensitivities
 
@@ -30,6 +31,7 @@ from .lic import (
 from .paa import PAAGroup, PAAReinsuranceHeld, paa_eligibility
 from .statements import IFRS17Statements
 from .aggregation import group_contracts
+from .case import PAACase, load_paa_case, example_case_path, copy_example_case
 from .disclosures import claims_development_table, maturity_analysis, lic_sensitivity
 
 __all__ = [
@@ -43,6 +45,10 @@ __all__ = [
     'implied_confidence_level',
     'IFRS17Statements',
     'group_contracts',
+    'PAACase',
+    'load_paa_case',
+    'example_case_path',
+    'copy_example_case',
     'claims_development_table',
     'maturity_analysis',
     'lic_sensitivity',

@@ -98,6 +98,7 @@ class PAAGroup:
                  insurance_revenue: Optional[Sequence[float]] = None,
                  expected_premium: Optional[float] = None,
                  revenue_pattern: Optional[Sequence[float]] = None,
+                 premiums_written: Optional[Sequence[float]] = None,
                  acquisition_cash_flows=None,
                  expense_acquisition_cash_flows: bool = False,
                  fulfilment_cash_flows_remaining: Optional[Sequence[float]] = None,
@@ -132,6 +133,12 @@ class PAAGroup:
             revenue_pattern: Share of the cover provided in each period, by
                 the passage of time or by the expected pattern of incurred
                 claims (defaults to equal periods)
+            premiums_written: Premium of the contracts added to the group in
+                each period, for a group that grows as policies are sold
+                during the year. Acquisition cash flows are then amortised
+                over the cover of the contracts recognised so far, and
+                ``expected_premium`` is the unearned premium at the start
+                (default nil). Requires ``insurance_revenue``.
             acquisition_cash_flows: Insurance acquisition cash flows paid in
                 each period (commission and other directly attributable costs)
             expense_acquisition_cash_flows: Expense acquisition cash flows
@@ -207,12 +214,23 @@ class PAAGroup:
         self.premiums_received = as_series(premiums, n, "premiums_received")
         self.acquisition_cash_flows = as_series(acquisition_cash_flows, n, "acquisition_cash_flows")
 
+        written = None
+        if premiums_written is not None:
+            if insurance_revenue is None:
+                raise ValueError("premiums_written requires insurance_revenue")
+            if lrc_discount_rate:
+                raise ValueError("premiums_written cannot be combined with lrc_discount_rate")
+            written = as_series(premiums_written, n, "premiums_written")
+
         if insurance_revenue is not None:
             if revenue_pattern is not None:
                 raise ValueError("Give either insurance_revenue or revenue_pattern, not both")
             revenue = as_series(insurance_revenue, n, "insurance_revenue")
-            total_expected = float(expected_premium) if expected_premium is not None \
-                else float(revenue.sum())
+            if written is not None:
+                total_expected = float(expected_premium or 0.0)
+            else:
+                total_expected = float(expected_premium) if expected_premium is not None \
+                    else float(revenue.sum())
         else:
             total_expected = float(expected_premium) if expected_premium is not None \
                 else float(premiums.sum())
@@ -266,12 +284,15 @@ class PAAGroup:
         # be given, in proportion to the revenue of each period
         self.amortisation = np.zeros(n)
         self.deferred_acquisition_cash_flows = np.zeros(n)
-        self.unearned_premium = total_expected - np.cumsum(revenue)
+        # Premium of the contracts recognised by the end of each period
+        recognised = (np.full(n, total_expected) if written is None
+                      else total_expected + np.cumsum(written))
+        self.unearned_premium = recognised - np.cumsum(revenue)
         if not self.expense_acquisition_cash_flows:
             unamortised = self.opening_deferred_acquisition_cash_flows
             for t in range(n):
                 unamortised += self.acquisition_cash_flows[t]
-                remaining = total_expected - revenue[:t].sum()
+                remaining = recognised[t] - revenue[:t].sum()
                 share = 1.0 if remaining <= revenue[t] or remaining <= 0 \
                     else revenue[t] / remaining
                 self.amortisation[t] = unamortised * share
@@ -481,11 +502,20 @@ class PAAGroup:
         analysed by remaining coverage and incurred claims (IFRS 17.100).
 
         Args:
-            period: Label of the period (defaults to the last period)
+            period: Label of the period (defaults to the last period), or
+                "all" for one reconciliation from the start of the first
+                period to the end of the last
 
         Returns:
             DataFrame of movements. Increases in the liability are positive.
         """
+        if isinstance(period, str) and period == "all" and "all" not in self.periods:
+            tables = [self.reconciliation(p) for p in self.periods]
+            combined = sum(tables[1:], tables[0].copy())
+            combined.loc["Opening liabilities"] = tables[0].loc["Opening liabilities"]
+            combined.loc["Closing liabilities"] = tables[-1].loc["Closing liabilities"]
+            combined.columns.name = f"{self.periods[0]} to {self.periods[-1]}"
+            return combined
         k = self.n_periods - 1 if period is None else self.periods.index(period)
         deferred = 0.0 if self.expense_acquisition_cash_flows else self.acquisition_cash_flows[k]
         columns = ["lrc_excluding_loss_component", "loss_component", "lic_present_value",
@@ -671,6 +701,89 @@ class PAAReinsuranceHeld:
             "aic_risk_adjustment": self.aic_risk_adjustment,
             "carrying_amount": self.carrying_amount,
         })
+
+    def arc_rollforward(self) -> pd.DataFrame:
+        """Movement of the asset for remaining coverage in each period."""
+        closing = self.arc_excluding_loss_recovery + self.loss_recovery_component
+        opening = np.concatenate((
+            [self._mirror.opening_lrc + self.opening_loss_recovery_component], closing[:-1]
+        ))
+        return self._frame({
+            "opening": opening,
+            "reinsurance_premiums_paid": self.premiums_paid,
+            "allocation_of_reinsurance_premiums": -self.allocation_of_premiums,
+            "loss_recovery_component_movement": self.loss_recovery_income,
+            "closing": closing,
+        })
+
+    def aic_rollforward(self) -> pd.DataFrame:
+        """Movement of the asset for incurred claims in each period."""
+        closing = self.aic_present_value + self.aic_risk_adjustment
+        opening = np.concatenate((
+            [self._mirror.opening_lic_pv + self._mirror.opening_lic_ra], closing[:-1]
+        ))
+        return self._frame({
+            "opening": opening,
+            "recoveries_incurred": self.recoveries_incurred + self.recoveries_risk_adjustment,
+            "adjustments_to_aic": self.adjustments_to_aic,
+            "finance_income": self.finance_income,
+            "recoveries_received": -self.recoveries_received,
+            "closing": closing,
+        })
+
+    def reconciliation(self, period=None) -> pd.DataFrame:
+        """
+        Reconciliation of the opening and closing reinsurance contract
+        assets for a period, analysed by remaining coverage and incurred
+        claims (IFRS 17.100).
+
+        Args:
+            period: Label of the period (defaults to the last period), or
+                "all" for the whole span of the periods
+
+        Returns:
+            DataFrame of movements. Increases in the asset are positive.
+        """
+        if isinstance(period, str) and period == "all" and "all" not in self.periods:
+            tables = [self.reconciliation(p) for p in self.periods]
+            combined = sum(tables[1:], tables[0].copy())
+            combined.loc["Opening assets"] = tables[0].loc["Opening assets"]
+            combined.loc["Closing assets"] = tables[-1].loc["Closing assets"]
+            combined.columns.name = f"{self.periods[0]} to {self.periods[-1]}"
+            return combined
+        k = self.n_periods - 1 if period is None else self.periods.index(period)
+        m = self._mirror
+        columns = ["arc_excluding_loss_recovery", "loss_recovery_component",
+                   "aic_present_value", "aic_risk_adjustment"]
+        balances = [self.arc_excluding_loss_recovery, self.loss_recovery_component,
+                    self.aic_present_value, self.aic_risk_adjustment]
+        first = [m.opening_lrc, self.opening_loss_recovery_component,
+                 m.opening_lic_pv, m.opening_lic_ra]
+        rows = {
+            "Opening assets": [b[k - 1] if k > 0 else f for b, f in zip(balances, first)],
+            "Allocation of reinsurance premiums paid": [-self.allocation_of_premiums[k], 0, 0, 0],
+            "Recoveries of incurred claims and other insurance service expenses":
+                [0, 0, self.recoveries_incurred[k], self.recoveries_risk_adjustment[k]],
+            "Recoveries of losses on onerous underlying contracts":
+                [0, self.loss_recovery_income[k], 0, 0],
+            "Adjustments to assets for incurred claims":
+                [0, 0, m.adjustments_to_lic_pv[k], m.adjustments_to_lic_ra[k]],
+        }
+        table = pd.DataFrame(rows, index=columns, dtype=float).T
+        table.loc["Net expenses from reinsurance contracts"] = table.loc[list(rows)[1:]].sum()
+        table.loc["Net finance income from reinsurance contracts"] = \
+            [0, 0, self.finance_income[k], 0]
+        table.loc["Total changes in profit or loss"] = table.loc[
+            ["Net expenses from reinsurance contracts",
+             "Net finance income from reinsurance contracts"]
+        ].sum()
+        table.loc["Premiums paid"] = [self.premiums_paid[k], 0, 0, 0]
+        table.loc["Amounts received"] = [0, 0, -self.recoveries_received[k], 0]
+        table.loc["Total cash flows"] = table.loc[["Premiums paid", "Amounts received"]].sum()
+        table.loc["Closing assets"] = [b[k] for b in balances]
+        table["total"] = table.sum(axis=1)
+        table.columns.name = self.periods[k]
+        return table + 0.0
 
     def profit_or_loss(self) -> pd.DataFrame:
         """Amounts recognised in profit or loss; income positive, expenses negative."""

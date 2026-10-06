@@ -1,0 +1,4 @@
+group,type,portfolio,expected_premium,expense_acquisition_cash_flows
+Motor 2026,insurance,Motor,,False
+Fire 2026,insurance,Fire,,False
+Motor quota share,reinsurance,Motor reinsurance,288000.0,
