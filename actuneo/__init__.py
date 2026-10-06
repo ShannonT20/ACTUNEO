@@ -36,6 +36,7 @@ from . import life
 from . import loss_reserving
 from . import ifrs17
 from . import zimbabwe
+from . import templates
 # Other modules will be imported as they are developed
 
 __all__ = [
@@ -45,5 +46,6 @@ __all__ = [
     'loss_reserving',
     'ifrs17',
     'zimbabwe',
+    'templates',
     # Add other modules as they are implemented
 ]
