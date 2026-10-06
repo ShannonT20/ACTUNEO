@@ -239,3 +239,32 @@ class TestRateConversions:
     def test_invalid_rate(self):
         with pytest.raises(ValueError):
             InterestTheory(-1.0)
+
+
+class TestHyperinflationHelpers:
+    """Restatement with a general price index."""
+
+    def test_restate(self):
+        from actuneo.finance import restate, cumulative_inflation
+        assert restate(100, 200, 500) == pytest.approx(250)
+        np.testing.assert_allclose(restate([100, 100], [200, 400], 800), [400, 200])
+        assert cumulative_inflation(100, 250) == pytest.approx(1.5)
+        with pytest.raises(ValueError):
+            restate(100, 0, 500)
+
+    def test_indicator(self):
+        from actuneo.finance import exceeds_hyperinflation_indicator
+        assert exceeds_hyperinflation_indicator(100, 200)
+        assert not exceeds_hyperinflation_indicator(100, 150)
+
+    def test_net_monetary_position(self):
+        from actuneo.finance import net_monetary_gain_or_loss
+        # Holding 1,000 of cash while prices double loses 1,000 of closing purchasing power
+        assert net_monetary_gain_or_loss(1000, [], [], 100, 200) == pytest.approx(-1000)
+        # Net monetary liabilities gain
+        assert net_monetary_gain_or_loss(-1000, [], [], 100, 200) == pytest.approx(1000)
+        # Cash received half way, when the index was 150
+        loss = net_monetary_gain_or_loss(1000, [300], [150], 100, 200)
+        assert loss == pytest.approx(1300 - (2000 + 400))
+        # No inflation, no gain or loss
+        assert net_monetary_gain_or_loss(1000, [300, -200], [100, 100], 100, 100) == 0
