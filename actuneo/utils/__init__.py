@@ -1,10 +1,19 @@
 """
 Utils Module
 
-Excel/CSV input-output functions, validation, and reporting.
+Input and output helpers.
 
-TODO: Implement utility functions for data handling and reporting.
+Currently provides formatted Excel reports. Validation and other reporting
+utilities are planned.
 """
 
-# Placeholder - to be implemented
-__all__ = []
+from .excel import Sheet, write_report, NUMBER_FORMAT, DECIMAL_FORMAT, RATIO_FORMAT, FACTOR_FORMAT
+
+__all__ = [
+    'Sheet',
+    'write_report',
+    'NUMBER_FORMAT',
+    'DECIMAL_FORMAT',
+    'RATIO_FORMAT',
+    'FACTOR_FORMAT',
+]
