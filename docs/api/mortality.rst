@@ -35,3 +35,14 @@ CommutationFunctions
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
+
+Select Mortality
+----------------
+
+.. automodule:: actuneo.mortality.select
+
+.. autoclass:: actuneo.mortality.SelectMortalityTable
+   :members:
+   :special-members: __init__
+
+.. autofunction:: actuneo.mortality.load_am92

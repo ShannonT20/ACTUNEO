@@ -1,23 +1,29 @@
 Simulation Module
 =================
 
-The simulation module will provide stochastic modeling tools.
+Monte Carlo simulation for general insurance.
 
 .. automodule:: actuneo.simulation
-   :members:
-   :undoc-members:
-   :show-inheritance:
 
-.. note::
-   This module is under development. Contributions are welcome!
+Aggregate Claims
+----------------
+
+.. autofunction:: actuneo.simulation.simulate_aggregate_claims
+
+.. autoclass:: actuneo.simulation.AggregateClaims
+   :members:
+
+Claims Simulator
+----------------
+
+.. automodule:: actuneo.simulation.claims
+
+.. autoclass:: actuneo.simulation.ClaimsSimulator
+   :members:
+   :special-members: __init__
 
 Planned Features
 ----------------
 
-* Monte Carlo simulation
-* Scenario generation
-* Stochastic mortality models
-* Economic scenario generators
-* Risk modeling
-* Sensitivity analysis
-
+* Reporting delays and case estimates, for incurred triangles
+* Economic scenarios and asset models

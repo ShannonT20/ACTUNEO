@@ -42,6 +42,25 @@ Added
     and notes (``IFRS17Statements.to_excel``, ``PAACase.to_excel``)
 
   The liability for remaining coverage reproduces the IASB premium allocation approach example
+* Life, with expenses and beyond net premiums:
+
+  * ``SelectMortalityTable`` and the AM92 select and ultimate table (``load_am92``)
+  * ``LifePolicy`` with ``Expenses``: gross and net premiums, prospective and retrospective
+    reserves, valuation of policies in force, the distribution of the insurer's loss, the
+    premium for a given probability of loss, death strain and mortality profit
+  * With-profits benefits with simple or compound bonuses
+  * ``MultipleDecrementTable`` (dependent and independent rates, revised tables) and
+    ``MultiStateModel`` (constant transition intensities)
+  * ``ProfitTest``, ``UnitLinkedPolicy`` and ``zeroise_negative_cashflows``: profit vector,
+    profit signature, net present value, internal rate of return and profit margin
+
+  These reproduce published answers worked on AM92
+* Reserving: one-year reserve risk (``MackChainLadder.cdr``, Merz and Wuthrich 2008),
+  ``MunichChainLadder`` for paid and incurred triangles together, and triangles with
+  missing cells (``allow_missing=True``)
+* ``actuneo.simulation``: aggregate claims from a frequency and severity distribution, and
+  ``ClaimsSimulator``, which produces triangles whose true ultimate cost is known
+* ``actuneo.macro_africa``: World Bank indicators for African countries
 * ``ChainLadder.cash_flows_by_origin``
 * ``Triangle.from_excel``, ``from_csv``, ``to_excel`` and ``to_csv``; ``compare_methods`` and
   ``export_reserving_report`` for a formatted reserving workbook

@@ -48,14 +48,30 @@ What is implemented
      - How it has been checked
    * - Mortality tables
      - Life table columns from ``qx``, survival probabilities, life
-       expectancy, ten Zimbabwe 2023 tables
-     - Hand calculation. The shipped tables agree with the columns in their
-       source files (life expectancy to within rounding)
+       expectancy, select mortality, ten Zimbabwe 2023 tables, AM92
+     - Hand calculation. The Zimbabwe tables agree with the columns in
+       their source files. AM92 agrees with its graduation formula and
+       reproduces published annuity and assurance values
    * - Life contingencies
      - Assurances, annuities, net premiums, net premium reserves,
        commutation functions, two-life functions assuming independence
-     - Hand calculation and identities. No published table of values has
-       been reproduced
+     - Published figures for single-life values on AM92. Two-life
+       functions: hand calculation and identities only
+   * - Gross premiums and reserves
+     - Premiums and reserves with expenses, with-profits bonuses, loss
+       distribution, mortality profit
+     - Published figures: worked answers of a standard life contingencies
+       text on AM92, to within their rounding
+   * - Competing risks
+     - Multiple decrement tables, multi-state models with constant
+       intensities
+     - Published figures for the multiple decrement table. Multi-state
+       model: closed-form cases only
+   * - Profit testing
+     - Conventional and unit-linked profit tests, profit signature, net
+       present value, zeroising reserves
+     - Published figures for three worked profit tests. Zeroising: hand
+       calculation
    * - Finance
      - Interest rate conversions, force of interest, annuities certain,
        cashflows and project appraisal, loan schedules, bonds and equities,
@@ -77,10 +93,27 @@ What is implemented
      - Published scale parameter for the Taylor/Ashe data. The simulated
        prediction error is close to, not equal to, the published analytic
        figure, as expected of a simulation
+   * - One-year reserve risk
+     - Standard error of the claims development result
+     - Published figures: the Merz and Wuthrich (2008) triangle, as printed
+       by the R ChainLadder package
+   * - Munich chain ladder
+     - Joint projection of paid and incurred triangles
+     - The correlation parameters match those published for Quarg and
+       Mack's data. The projected ultimates were not checked against a
+       published table
    * - Other reserving tools
      - Cape Cod, tail factors, cash flows, discounting, quantiles,
-       triangles from claim listings, Excel output, plots
+       triangles from claim listings, missing cells, Excel output, plots
      - Hand calculation and identities. Plots: runs without error only
+   * - Simulation
+     - Aggregate claims; simulated claim payments and triangles
+     - Simulated moments against their theoretical values. The claims
+       simulator is a simple model of reality, not a calibrated one
+   * - Macro data
+     - World Bank indicators downloaded on request
+     - Tested on a stored response only. The live download was not
+       exercised by the tests
    * - IFRS 17, premium allocation approach
      - Liability for remaining coverage, revenue, acquisition cash flows,
        loss component, liability for incurred claims, reinsurance held
@@ -105,8 +138,16 @@ Known limitations
 Mortality and life
 ~~~~~~~~~~~~~~~~~~
 
-* Tables must have single-year ages. Select tables, mortality improvement
-  and graduation are not supported.
+* Tables must have single-year ages. Mortality improvement and graduation
+  are not supported.
+* AM92 is a UK table of assured male lives from 1991-94. It is included for
+  education and testing, not as a suitable basis for African lives. It
+  belongs to the Continuous Mortality Investigation; check their terms
+  before redistributing it. Its ultimate rates at ages 17 and 18 come from
+  the graduation formula, which leaves ``lx`` about 0.01 in 10,000 away
+  from the published column; ratios of ``lx`` are unaffected.
+* The pensioner tables used in UK examples (PMA92, PFA92) and ELT15 are
+  not included, so questions that need them cannot be reproduced.
 * The Zimbabwe 2023 data shipped has gaps: there is no female assured-lives
   table, group life and pre-retirement pension tables stop at age 70,
   post-retirement tables start at age 76 (ages 71 to 75 are missing for
@@ -117,8 +158,20 @@ Mortality and life
   everyone dies in the following year, with a warning. For a table that
   stops at age 70 this makes whole life values meaningless.
 * Two-life functions assume the lives are independent.
-* Premiums and reserves are net (no expenses, lapses, surrender values,
-  bonuses or tax). There is no gross premium or profit-testing model.
+* ``LifePolicy`` has premiums paid annually in advance only. Premiums and
+  benefits paid monthly, deferred annuities with expenses, and benefits
+  that return premiums are not handled by it.
+* Benefits paid at the moment of death use the approximation of half a
+  year's interest in ``LifePolicy`` and the uniform-deaths factor in
+  ``SurvivalFunctions``. The two differ slightly.
+* With-profits covers reversionary bonuses added at the end of each year.
+  Terminal bonus, asset shares and accumulating with-profits are not
+  modelled.
+* The multi-state model has constant transition intensities, so rates do
+  not vary with age or duration of sickness.
+* Profit tests take the reserves and decrement rates as inputs. They do
+  not derive reserves from a basis, and unit-linked charges are limited to
+  allocation, bid/offer spread and an annual management charge.
 
 Finance
 ~~~~~~~
@@ -157,8 +210,11 @@ Loss reserving
 * Reserve quantiles from Mack's model assume a lognormal or normal shape.
 * The bootstrap follows the R approach of resampling all residuals. It has
   no tail factor and does not handle negative development well.
-* Munich chain ladder, one-year reserve risk (Merz-Wuthrich) and
-  generalised linear models are not implemented.
+* Generalised linear models for reserving are not implemented.
+* The one-year reserve risk formula does not allow for a tail factor.
+* The Munich chain ladder fills the parameter of the last development step
+  by a log-linear trend, and has no standard errors.
+* Missing cells are supported by the chain-ladder and Mack only.
 * The inflation-adjusted method treats payments as made mid-period and
   applies a tail factor to money-terms claims without further inflation.
 
@@ -221,8 +277,21 @@ Zimbabwe-specific content
 Not started
 ~~~~~~~~~~~
 
-The ``pensions``, ``macro_africa`` and ``simulation`` modules are empty
-placeholders. ``utils`` holds only the Excel report writer.
+The ``pensions`` module is an empty placeholder. ``utils`` holds only the
+Excel report writer.
+
+Simulation and macro data
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* The claims simulator pays every claim in fixed proportions over the
+  development years, with no reporting delay, case estimates or reopened
+  claims. It is a test bed for reserving methods, not a model of a real
+  portfolio.
+* Macro data comes only from the World Bank's annual indicators. Recent
+  years are often missing, and for countries with very high inflation or
+  several exchange rates the official series may not reflect the rates
+  actually experienced. No national statistics office or central bank
+  source is connected.
 
 What would raise confidence
 ---------------------------

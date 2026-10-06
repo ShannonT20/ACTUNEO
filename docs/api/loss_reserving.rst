@@ -60,6 +60,18 @@ MackChainLadder
    :show-inheritance:
    :special-members: __init__
 
+MunichChainLadder
+-----------------
+
+.. automodule:: actuneo.loss_reserving.munich
+
+.. autoclass:: actuneo.loss_reserving.MunichChainLadder
+   :members:
+   :special-members: __init__
+
+One-year reserve risk is ``MackChainLadder.cdr()``. Triangles with missing
+cells are created with ``Triangle(..., allow_missing=True)``.
+
 BootChainLadder
 ---------------
 
@@ -89,9 +101,12 @@ Example Triangles
 
 .. autofunction:: actuneo.loss_reserving.load_genins
 
+.. autofunction:: actuneo.loss_reserving.load_mw2008
+
+.. autofunction:: actuneo.loss_reserving.load_mcl
+
 Planned Features
 ----------------
 
-* Munich chain-ladder
-* One-year reserve risk (Merz-Wuthrich)
-* Triangles with missing cells
+* Generalised linear models for reserving
+* Bootstrap with a tail factor

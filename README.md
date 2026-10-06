@@ -20,19 +20,19 @@ ACTUNEO is an early-stage library. It has not been reviewed by an independent ac
 
 ### Implemented Modules
 
-- **mortality**: Mortality tables, life contingencies and commutation functions, with the Zimbabwe 2023 tables included
+- **mortality**: Mortality tables, select mortality, life contingencies and commutation functions, with the Zimbabwe 2023 tables and AM92 included
 - **finance**: Interest theory, yield curve construction/interpolation, duration, and convexity
-- **life**: Life assurance, annuities, premiums and reserves, for one or two lives
+- **life**: Life assurance, annuities, net and gross premiums and reserves with expenses, with-profits benefits, mortality profit, multiple decrement and multi-state models, unit-linked policies and profit testing
 - **loss_reserving**: Claims triangles, chain-ladder (basic and inflation-adjusted), average cost per claim, Bornhuetter-Ferguson, Mack's standard error and bootstrap
 - **ifrs17**: Premium allocation approach, liability for incurred claims with discounting and risk adjustment, reinsurance held, and the IFRS 17 statement of profit or loss, financial position and cash flows
+- **simulation**: Aggregate claims simulation, and a claims simulator that produces triangles with a known true cost for testing reserving methods
+- **macro_africa**: World Bank economic indicators (inflation, growth, exchange and interest rates) for African countries, downloaded on request
 - **zimbabwe**: Catalogue of the Zimbabwe 2023 mortality tables and ZWL to ZiG conversion
 
 ### In Development (Scaffolding Present)
 
 - **pensions**: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
 - **ifrs17** (further): General measurement model (GMM) and variable fee approach (VFA), with the contractual service margin
-- **macro_africa**: Country-specific economic data connectors (inflation, GDP, currency exchange)
-- **simulation**: Monte Carlo simulations for stochastic actuarial models
 - **utils**: Data input-output helpers, validation, and reporting utilities
 
 ### African Market Focus
