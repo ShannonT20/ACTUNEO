@@ -60,8 +60,11 @@ Excel and edit:
 
 .. code-block:: py
 
+   from actuneo.templates import save_template
+   save_template("paa_case")        # paa_case_template.xlsx, with a guide sheet
+
    from actuneo.ifrs17 import copy_example_case
-   copy_example_case("my_case")     # creates a folder with the four CSV files
+   copy_example_case("my_case")     # or a folder with the four CSV files
 
 The solution
 ------------
@@ -110,14 +113,16 @@ To write the whole calculation to a formatted Excel workbook:
 
    case.to_excel("kopje_results.xlsx")
 
-The workbook opens on a contents page with a link to every sheet. The
+The workbook opens on a cover sheet with the key figures (insurance
+revenue, insurance service result, profit, combined ratio, insurance
+contract liabilities and equity) and a linked list of contents. The
 statements come first, laid out as an insurer publishes them: a statement of
 profit or loss and other comprehensive income leading to the insurance
 service result and the net financial result; a statement of financial
 position with assets, liabilities and equity; then cash flows and changes in
 equity. Each has a column per month and a total for the year, negatives in
-brackets, totals in bold, and the paragraph of IFRS 17 beside the main
-lines. The notes, key ratios, roll-forwards and the IFRS 17.100
+red brackets, totals highlighted, charts of the main trends, and the
+paragraph of IFRS 17 beside the main lines. The notes, key ratios, roll-forwards and the IFRS 17.100
 reconciliation of each group follow.
 
 What the answer shows

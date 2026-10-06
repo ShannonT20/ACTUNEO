@@ -349,9 +349,10 @@ the results written back to a formatted workbook:
        compare_methods, export_reserving_report, load_raa,
    )
 
-   load_raa().to_excel("triangle_template.xlsx")       # a file to copy the layout from
+   from actuneo.templates import save_template
+   save_template("triangle")                           # triangle_template.xlsx to fill in
 
-   paid = Triangle.from_excel("my_triangle.xlsx", sheet_name="Motor paid")
+   paid = Triangle.from_excel("triangle_template.xlsx")
    # paid = Triangle.from_csv("my_triangle.csv")
 
    models = {

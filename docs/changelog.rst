@@ -45,7 +45,10 @@ Added
 * ``ChainLadder.cash_flows_by_origin``
 * ``Triangle.from_excel``, ``from_csv``, ``to_excel`` and ``to_csv``; ``compare_methods`` and
   ``export_reserving_report`` for a formatted reserving workbook
-* ``actuneo.utils``: ``write_report`` for formatted Excel workbooks
+* ``actuneo.utils``: ``write_report`` for formatted Excel workbooks, with a cover sheet of key
+  figures and contents, banded tables, highlighted totals, coloured tabs and charts
+* ``actuneo.templates``: Excel templates for a claims triangle and for a premium allocation
+  approach case, each with a guide sheet (``save_template``)
 * ``actuneo.finance``: helpers for hyperinflation restatement (``restate``,
   ``net_monetary_gain_or_loss``, ``cumulative_inflation``)
 * A Status and Limitations page stating what is implemented, how each part was checked and
