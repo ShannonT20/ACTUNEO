@@ -14,6 +14,7 @@ This module provides tools for:
 from .mortality_table import MortalityTable
 from .survival_functions import SurvivalFunctions
 from .commutation import CommutationFunctions
+from .select import SelectMortalityTable, load_am92
 # from .graduation import Graduation  # TODO: Implement later
 # from .improvement import MortalityImprovement  # TODO: Implement later
 
@@ -21,4 +22,6 @@ __all__ = [
     'MortalityTable',
     'SurvivalFunctions',
     'CommutationFunctions',
+    'SelectMortalityTable',
+    'load_am92',
 ]
