@@ -170,6 +170,12 @@ IFRS 17
 * The claims development table rebuilds past estimates from today's
   development factors when recorded estimates are not supplied. That is a
   substitute for the history the standard asks for.
+* The Excel workbooks are laid out like published insurer accounts but they
+  are working papers, not financial statements: there are no accounting
+  policies, comparatives or most of the required disclosures.
+* The case files (``load_paa_case``) are a convenience format of this
+  library, not an industry standard. The example case shipped with it is a
+  fictional insurer with invented figures, for demonstration only.
 * The financial statements are those of a very simple insurer: cash and
   investments are one line, other expenses and tax are settled in cash in
   the period, there is no deferred tax, no tax on other comprehensive
@@ -195,8 +201,8 @@ Zimbabwe-specific content
 Not started
 ~~~~~~~~~~~
 
-The ``pensions``, ``macro_africa``, ``simulation`` and ``utils`` modules
-are empty placeholders.
+The ``pensions``, ``macro_africa`` and ``simulation`` modules are empty
+placeholders. ``utils`` holds only the Excel report writer.
 
 What would raise confidence
 ---------------------------

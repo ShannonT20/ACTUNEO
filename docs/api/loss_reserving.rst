@@ -67,6 +67,16 @@ BootChainLadder
    :members:
    :special-members: __init__
 
+Reports and Files
+-----------------
+
+``Triangle.from_excel``, ``Triangle.from_csv``, ``Triangle.to_excel`` and
+``Triangle.to_csv`` read and write triangles as spreadsheets.
+
+.. autofunction:: actuneo.loss_reserving.compare_methods
+
+.. autofunction:: actuneo.loss_reserving.export_reserving_report
+
 Tail Factors
 ------------
 

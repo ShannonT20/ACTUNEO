@@ -33,9 +33,19 @@ Added
     unearned premium, premiums receivable, deferred acquisition costs and claims reserves
   * ``lrc_discount_rate`` for a significant financing component in the liability for
     remaining coverage (IFRS 17.56)
+  * ``load_paa_case``: run a whole calculation from a folder of CSV files or an Excel
+    workbook, with a fictional example case and a report with periods in columns
+  * ``premiums_written`` for groups that grow as policies are sold, and roll-forward
+    tables for reinsurance held
+  * Totals for all periods on the statements, a reconciliation for the whole span of
+    periods, a reinsurance reconciliation, and a formatted Excel workbook of the statements
+    and notes (``IFRS17Statements.to_excel``, ``PAACase.to_excel``)
 
   The liability for remaining coverage reproduces the IASB premium allocation approach example
 * ``ChainLadder.cash_flows_by_origin``
+* ``Triangle.from_excel``, ``from_csv``, ``to_excel`` and ``to_csv``; ``compare_methods`` and
+  ``export_reserving_report`` for a formatted reserving workbook
+* ``actuneo.utils``: ``write_report`` for formatted Excel workbooks
 * ``actuneo.finance``: helpers for hyperinflation restatement (``restate``,
   ``net_monetary_gain_or_loss``, ``cumulative_inflation``)
 * A Status and Limitations page stating what is implemented, how each part was checked and
@@ -60,6 +70,8 @@ Changed
   the triangle; ``BootChainLadder`` handles fitted values of zero
 * The Mack sigma extrapolation and tail uncertainty were compared with the source of the
   R ChainLadder package and follow the same algorithm
+* ``key_ratios`` now gives the combined ratio as insurance service expenses over insurance
+  revenue, with the net-of-reinsurance and including-other-expenses variants as separate lines
 * README and documentation no longer describe unbuilt features (regulatory templates,
   multi-currency modelling, calibrated local data) as available
 

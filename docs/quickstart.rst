@@ -328,7 +328,7 @@ Future payments, discounting and a loss ratio estimated from the data:
    cape_cod = CapeCod(raa, premium=[25000] * 10)
    print(f"Cape Cod loss ratio {cape_cod.loss_ratio:.1%}, reserve {cape_cod.reserve():,.0f}")
 
-Plots need matplotlib (``pip install actuneo[viz]``) and Excel output needs
+Plots need matplotlib (``pip install actuneo[viz]``) and Excel files need
 openpyxl (``pip install actuneo[excel]``):
 
 .. code-block:: py
@@ -338,7 +338,32 @@ openpyxl (``pip install actuneo[excel]``):
    mack.plot_residuals()           # residuals by development step
    BootChainLadder(raa, seed=1).plot()   # histogram of the simulated reserve
 
-   mack.to_excel("raa_reserve.xlsx")     # summary, triangle, projection, factors, cash flows
+Triangles can be kept in Excel or CSV, laid out as a triangle with origin
+periods down the first column and development periods across the top, and
+the results written back to a formatted workbook:
+
+.. code-block:: py
+
+   from actuneo.loss_reserving import (
+       Triangle, ChainLadder, MackChainLadder, BornhuetterFerguson,
+       compare_methods, export_reserving_report, load_raa,
+   )
+
+   load_raa().to_excel("triangle_template.xlsx")       # a file to copy the layout from
+
+   paid = Triangle.from_excel("my_triangle.xlsx", sheet_name="Motor paid")
+   # paid = Triangle.from_csv("my_triangle.csv")
+
+   models = {
+       "Chain ladder": ChainLadder(paid),
+       "Mack": MackChainLadder(paid, est_sigma="mack"),
+       "Bornhuetter-Ferguson": BornhuetterFerguson(paid, premium=[...], loss_ratio=0.75),
+   }
+   print(compare_methods(models))                      # ultimates and reserves side by side
+
+   # Contents page, triangles, link ratios, comparison, and each method's results
+   export_reserving_report("reserving_report.xlsx", paid, models,
+                           title="Motor reserving at 31 December 2026", currency="USD")
 
 IFRS 17: Premium Allocation Approach
 ------------------------------------

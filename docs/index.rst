@@ -137,6 +137,7 @@ Contents
    installation
    quickstart
    examples
+   ifrs17_case_study
    status
 
 .. toctree::

@@ -82,6 +82,22 @@ Presentation choices
 * **Portfolios** in an asset position are presented separately from those in
   a liability position; groups within a portfolio are netted.
 
+Practice varies. KPMG's review of insurers' 2024 annual reports found that
+19 of 47 insurers using the PAA expensed some acquisition cash flows when
+incurred, and that a little over half presented part of insurance finance
+income and expenses in other comprehensive income.
+
+Key ratios
+----------
+
+``key_ratios()`` gives the combined ratio as insurance service expenses
+divided by insurance revenue, the base calculation most non-life insurers
+now use, with two common variants: net of reinsurance, and including
+expenses not directly attributable to insurance contracts. The same review
+found that insurers adjust this base in different ways and some still use a
+premium measure as the denominator, so a ratio should always be quoted with
+its definition.
+
 IFRS 17 in Zimbabwe
 -------------------
 
@@ -112,7 +128,8 @@ Points that affect how the standard is applied locally.
   accident period. ``Triangle.from_transactions`` builds them from a claims
   listing.
 
-Sources: IPEC and Insurance Council of Zimbabwe notices on SI 81 of 2023;
+Sources: KPMG, "Real-time IFRS 17: Insurers' 2024 annual financial
+statements" (2025); IPEC and Insurance Council of Zimbabwe notices on SI 81 of 2023;
 Claxon Actuaries, "Implementing IFRS 17 in Zimbabwe: Challenges" and
 "Presentation of Financial Accounts under IFRS 17: A Non-Life Insurance
 Perspective" (June 2020); First Mutual Holdings Limited, 2024 Annual Report.
@@ -154,6 +171,20 @@ Financial Statements
 .. autoclass:: actuneo.ifrs17.IFRS17Statements
    :members:
    :special-members: __init__
+
+Case Files
+----------
+
+.. automodule:: actuneo.ifrs17.case
+
+.. autofunction:: actuneo.ifrs17.load_paa_case
+
+.. autoclass:: actuneo.ifrs17.PAACase
+   :members:
+
+.. autofunction:: actuneo.ifrs17.example_case_path
+
+.. autofunction:: actuneo.ifrs17.copy_example_case
 
 Level of Aggregation
 --------------------
