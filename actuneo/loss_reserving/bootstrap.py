@@ -72,6 +72,7 @@ class BootChainLadder:
         if n_simulations < 1:
             raise ValueError("n_simulations must be at least 1")
 
+        triangle._require_complete("The bootstrap")
         self.triangle = triangle.to_cumulative()
         self.n_simulations = int(n_simulations)
         self.process_distribution = process_distribution

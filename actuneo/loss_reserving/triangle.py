@@ -35,7 +35,8 @@ class Triangle:
                  origin: Optional[Sequence] = None,
                  development: Optional[Sequence] = None,
                  cumulative: bool = True,
-                 name: str = "Triangle"):
+                 name: str = "Triangle",
+                 allow_missing: bool = False):
         """
         Initialize a triangle.
 
@@ -47,6 +48,11 @@ class Triangle:
             development: Labels of the development periods (default 1, 2, ...)
             cumulative: True if the values are cumulative, False if incremental
             name: Name/description of the triangle
+            allow_missing: Accept cells with no value inside the observed
+                part of the triangle (for example a lost year of data). Link
+                ratios that need a missing cell are left out. Only for
+                cumulative triangles; the bootstrap and the
+                inflation-adjusted method do not support missing cells.
         """
         if isinstance(values, pd.DataFrame):
             if origin is None:
@@ -79,15 +85,21 @@ class Triangle:
             if not observed[i].any():
                 raise ValueError(f"origin period {self.origin[i]} has no observations")
             last = np.flatnonzero(observed[i])[-1]
-            if not observed[i, :last + 1].all():
+            if not allow_missing and not observed[i, :last + 1].all():
                 raise ValueError(
                     f"origin period {self.origin[i]} has missing values before its "
                     "latest observation"
                 )
 
+        if allow_missing and not cumulative:
+            raise ValueError("missing cells are only supported for cumulative triangles")
         self.values = arr
         self.is_cumulative = bool(cumulative)
         self.name = name
+        self.allow_missing = bool(allow_missing)
+        self.has_missing = bool(allow_missing and any(
+            not observed[i, :np.flatnonzero(observed[i])[-1] + 1].all()
+            for i in range(n_origin)))
 
     # ------------------------------------------------------------------
     # Constructors
@@ -352,6 +364,10 @@ class Triangle:
     def _with_values(self, values: np.ndarray, cumulative: bool) -> 'Triangle':
         return Triangle(values, self.origin, self.development, cumulative, self.name)
 
+    def _require_complete(self, what: str) -> None:
+        if getattr(self, "has_missing", False):
+            raise ValueError(f"{what} does not support triangles with missing cells")
+
     def _latest_index(self) -> np.ndarray:
         """Column position of the latest observation of each origin period."""
         observed = ~np.isnan(self.values)
@@ -370,6 +386,7 @@ class Triangle:
         """Incremental triangle (R: ``cum2incr``)."""
         if not self.is_cumulative:
             return self
+        self._require_complete("Conversion to incremental claims")
         incremental = self.values.copy()
         incremental[:, 1:] = np.diff(self.values, axis=1)
         return self._with_values(incremental, False)

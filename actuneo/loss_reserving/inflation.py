@@ -70,6 +70,7 @@ class InflationAdjustedChainLadder(ChainLadder):
             raise ValueError("development_per_origin must be a positive integer")
         step = int(development_per_origin)
 
+        triangle._require_complete("The inflation-adjusted chain-ladder")
         nominal = triangle.to_cumulative()
         incremental = nominal.to_incremental().values
         n_origin, n_dev = incremental.shape
