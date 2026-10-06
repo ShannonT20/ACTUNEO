@@ -303,34 +303,21 @@ class ChainLadder:
     # ------------------------------------------------------------------
     # Output
     # ------------------------------------------------------------------
-    def to_excel(self, path: str) -> None:
+    def to_excel(self, path: str, title: str = "", currency: str = "") -> None:
         """
-        Write the results to an Excel workbook (needs openpyxl).
-
-        Sheets: Summary, Triangle, Projection, Factors and Cash flows.
+        Write the results to a formatted Excel workbook (needs openpyxl):
+        the triangle, link ratios, summary, projection, development factors
+        and expected cash flows.
 
         Args:
             path: File name of the workbook, ending in .xlsx
+            title: Heading for the report (defaults to the triangle's name)
+            currency: Currency of the amounts
         """
-        try:
-            import openpyxl  # noqa: F401
-        except ImportError as exc:
-            raise ImportError(
-                "Writing Excel files requires openpyxl. Install it with: "
-                "pip install actuneo[excel]"
-            ) from exc
-
-        factors = pd.DataFrame({"factor": self.factors})
-        factors["cdf"] = self.cdf.to_numpy()[:-1]
-        for name in ("sigma", "f_se"):
-            if hasattr(self, name):
-                factors[name] = getattr(self, name)
-        with pd.ExcelWriter(path, engine="openpyxl") as writer:
-            self.summary().to_excel(writer, sheet_name="Summary")
-            self.triangle.to_frame().to_excel(writer, sheet_name="Triangle")
-            self.full_triangle.to_excel(writer, sheet_name="Projection")
-            factors.to_excel(writer, sheet_name="Factors")
-            self.cash_flows().to_frame().to_excel(writer, sheet_name="Cash flows")
+        from .report import export_reserving_report
+        export_reserving_report(path, self.triangle, {type(self).__name__: self},
+                                title=title or f"{self.triangle.name}: reserving report",
+                                currency=currency)
 
     def plot(self, ax=None):
         """

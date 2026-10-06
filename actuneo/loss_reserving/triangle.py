@@ -233,6 +233,96 @@ class Triangle:
                        development=range(1, n_dev + 1), cumulative=False, name=name)
         return triangle.to_cumulative() if cumulative else triangle
 
+    @staticmethod
+    def _labelled(frame: pd.DataFrame) -> pd.DataFrame:
+        """Use whole numbers for row and column labels where the file has them."""
+        def tidy(labels):
+            cleaned = []
+            for label in labels:
+                try:
+                    number = float(label)
+                    cleaned.append(int(number) if number == int(number) else number)
+                except (TypeError, ValueError):
+                    cleaned.append(label)
+            return cleaned
+        frame = frame.copy()
+        frame.index = tidy(frame.index)
+        frame.columns = tidy(frame.columns)
+        return frame.dropna(axis=0, how="all").dropna(axis=1, how="all")
+
+    @classmethod
+    def from_excel(cls,
+                   path: str,
+                   sheet_name=0,
+                   cumulative: bool = True,
+                   name: Optional[str] = None) -> 'Triangle':
+        """
+        Read a triangle from an Excel sheet (needs openpyxl).
+
+        The sheet holds the triangle as it is usually laid out: origin
+        periods down the first column, development periods across the first
+        row, and empty cells where claims have not yet developed.
+
+        Args:
+            path: Excel workbook
+            sheet_name: Name or position of the sheet
+            cumulative: True if the values are cumulative, False if incremental
+            name: Name for the triangle (defaults to the sheet name)
+
+        Returns:
+            Triangle instance
+        """
+        try:
+            frame = pd.read_excel(path, sheet_name=sheet_name, index_col=0)
+        except ImportError as exc:
+            raise ImportError(
+                "Reading Excel files requires openpyxl. Install it with: "
+                "pip install actuneo[excel]"
+            ) from exc
+        label = name or (sheet_name if isinstance(sheet_name, str) else "Triangle")
+        return cls(cls._labelled(frame), cumulative=cumulative, name=label)
+
+    @classmethod
+    def from_csv(cls,
+                 path: str,
+                 cumulative: bool = True,
+                 name: str = "Triangle") -> 'Triangle':
+        """
+        Read a triangle from a CSV file laid out with origin periods down
+        the first column and development periods across the first row.
+
+        Args:
+            path: CSV file
+            cumulative: True if the values are cumulative, False if incremental
+            name: Name for the triangle
+
+        Returns:
+            Triangle instance
+        """
+        return cls(cls._labelled(pd.read_csv(path, index_col=0)), cumulative=cumulative,
+                   name=name)
+
+    def to_excel(self, path: str, sheet_name: str = "Triangle") -> None:
+        """
+        Write the triangle to an Excel sheet in the layout that
+        :meth:`from_excel` reads (needs openpyxl). Useful as a template.
+
+        Args:
+            path: File name of the workbook, ending in .xlsx
+            sheet_name: Name of the sheet
+        """
+        try:
+            self.to_frame().to_excel(path, sheet_name=sheet_name)
+        except ImportError as exc:
+            raise ImportError(
+                "Writing Excel files requires openpyxl. Install it with: "
+                "pip install actuneo[excel]"
+            ) from exc
+
+    def to_csv(self, path: str) -> None:
+        """Write the triangle to a CSV file in the layout that :meth:`from_csv` reads."""
+        self.to_frame().to_csv(path)
+
     @classmethod
     def from_dataframe(cls,
                        df: pd.DataFrame,

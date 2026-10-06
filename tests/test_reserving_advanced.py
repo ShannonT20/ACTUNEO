@@ -399,27 +399,33 @@ class TestInflationWithShorterDevelopmentPeriods:
 class TestExcelOutput:
     """Results written to a workbook."""
 
-    def test_round_trip(self, tmp_path):
-        pytest.importorskip("openpyxl")
+    def test_values_survive(self, tmp_path):
+        openpyxl = pytest.importorskip("openpyxl")
         mack = MackChainLadder(load_raa(), est_sigma="mack")
         path = tmp_path / "raa.xlsx"
-        mack.to_excel(str(path))
+        mack.to_excel(str(path), currency="USD")
 
-        sheets = pd.read_excel(path, sheet_name=None, index_col=0)
-        assert list(sheets) == ["Summary", "Triangle", "Projection", "Factors", "Cash flows"]
-        assert sheets["Summary"].loc["Total", "ibnr"] == pytest.approx(mack.total_ibnr)
-        assert sheets["Summary"].loc["Total", "mack_se"] == pytest.approx(mack.total_mack_se)
-        assert sheets["Projection"].shape == (10, 10)
-        assert list(sheets["Factors"].columns) == ["factor", "cdf", "sigma", "f_se"]
-        assert sheets["Cash flows"]["cash_flow"].sum() == pytest.approx(mack.total_ibnr)
+        book = openpyxl.load_workbook(path)
+        summary = book["MackChainLadder - Summary"]
+        labels = [c.value for c in summary["A"]]
+        header = [c.value for c in summary[5]]
+        total = labels.index("Total") + 1
+        assert summary.cell(row=total, column=header.index("ibnr") + 1).value == pytest.approx(
+            mack.total_ibnr)
+        assert summary.cell(row=total, column=header.index("mack_se") + 1).value == \
+            pytest.approx(mack.total_mack_se)
+        flows = book["MackChainLadder - Cash flows"]
+        flow_labels = [c.value for c in flows["A"]]
+        assert flows.cell(row=flow_labels.index("Total") + 1, column=2).value == pytest.approx(
+            mack.total_ibnr)
 
     def test_other_methods(self, tmp_path, small):
-        pytest.importorskip("openpyxl")
+        openpyxl = pytest.importorskip("openpyxl")
         bf = BornhuetterFerguson(small, premium=[200, 220, 240], loss_ratio=0.8)
         path = tmp_path / "bf.xlsx"
         bf.to_excel(str(path))
-        summary = pd.read_excel(path, sheet_name="Summary", index_col=0)
-        assert summary.loc["Total", "ultimate"] == pytest.approx(bf.ultimate.sum())
+        book = openpyxl.load_workbook(path)
+        assert "BornhuetterFerguson - Summary" in book.sheetnames
 
 
 class TestPlots:
@@ -505,3 +511,91 @@ class TestSelectedFactors:
         np.testing.assert_allclose(model.ultimate, [1481.2, 1811.25, 1946.26])
         assert model.reserve() == pytest.approx(2370.71)
         assert model.cash_flows().sum() == pytest.approx(model.reserve())
+
+
+class TestTriangleFiles:
+    """Reading and writing triangles as spreadsheets."""
+
+    def test_csv_round_trip(self, tmp_path):
+        raa = load_raa()
+        path = tmp_path / "raa.csv"
+        raa.to_csv(str(path))
+        back = Triangle.from_csv(str(path), name="RAA")
+        np.testing.assert_array_equal(back.values, raa.values)
+        assert back.origin == raa.origin and back.development == raa.development
+
+    def test_excel_round_trip(self, tmp_path):
+        pytest.importorskip("openpyxl")
+        raa = load_raa()
+        path = tmp_path / "raa.xlsx"
+        raa.to_excel(str(path), sheet_name="Motor paid")
+        back = Triangle.from_excel(str(path), sheet_name="Motor paid")
+        np.testing.assert_array_equal(back.values, raa.values)
+        assert back.origin[0] == 1981 and back.development[-1] == 10
+        assert back.name == "Motor paid"
+        assert ChainLadder(back).total_ibnr == pytest.approx(ChainLadder(raa).total_ibnr)
+
+    def test_incremental_file_with_blank_rows(self, tmp_path):
+        """Blank rows and columns around the triangle are ignored."""
+        path = tmp_path / "t.csv"
+        path.write_text("origin,1,2,3,\n2021,100,50,15,\n2022,110,66,,\n2023,120,,,\n,,,,\n")
+        tri = Triangle.from_csv(str(path), cumulative=False)
+        assert tri.shape == (3, 3)
+        assert tri.to_cumulative().latest_diagonal().tolist() == [165, 176, 120]
+
+
+class TestReservingReport:
+    """Comparison of methods and the formatted workbook."""
+
+    @pytest.fixture
+    def models(self):
+        raa = load_raa()
+        premium = np.full(10, 25000.0)
+        return {
+            "Chain ladder": ChainLadder(raa),
+            "Mack": MackChainLadder(raa, est_sigma="mack"),
+            "Bornhuetter-Ferguson": BornhuetterFerguson(raa, premium=premium, loss_ratio=0.9),
+            "Cape Cod": CapeCod(raa, premium),
+            "Bootstrap": BootChainLadder(raa, 300, seed=1),
+        }
+
+    def test_compare_methods(self, models):
+        from actuneo.loss_reserving import compare_methods
+        table = compare_methods(models)
+        assert table.loc["Total", "Latest"] == 160987
+        assert table.loc["Total", "Chain ladder IBNR"] == pytest.approx(52135, abs=1)
+        assert table.loc["Total", "Mack IBNR"] == pytest.approx(
+            table.loc["Total", "Chain ladder IBNR"])
+        assert table.loc["Total", "Bootstrap IBNR"] == pytest.approx(models["Bootstrap"].mean_ibnr)
+        np.testing.assert_allclose(table["Cape Cod ultimate"] - table["Cape Cod IBNR"],
+                                   table["Latest"])
+        with pytest.raises(ValueError):
+            compare_methods({})
+
+    def test_workbook(self, models, tmp_path):
+        openpyxl = pytest.importorskip("openpyxl")
+        from actuneo.loss_reserving import export_reserving_report
+        path = tmp_path / "reserving.xlsx"
+        export_reserving_report(str(path), load_raa(), models, title="RAA review",
+                                currency="USD")
+        book = openpyxl.load_workbook(path)
+        for expected in ("Contents", "Cumulative triangle", "Link ratios",
+                         "Comparison of methods", "Mack - Summary", "Mack - Factors",
+                         "Chain ladder - Cash flows", "Bootstrap - Summary"):
+            assert expected in book.sheetnames
+        comparison = book["Comparison of methods"]
+        labels = [c.value for c in comparison["A"]]
+        total_row = labels.index("Total") + 1
+        assert comparison.cell(row=total_row, column=2).value == 160987
+        assert comparison.cell(row=total_row, column=1).font.bold
+        assert book["Contents"]["A1"].value == "RAA review"
+        # Link ratios keep their decimals
+        assert book["Link ratios"].cell(row=6, column=2).number_format == "0.0000"
+
+    def test_single_model_to_excel(self, tmp_path):
+        openpyxl = pytest.importorskip("openpyxl")
+        path = tmp_path / "mack.xlsx"
+        MackChainLadder(load_raa(), est_sigma="mack").to_excel(str(path))
+        book = openpyxl.load_workbook(path)
+        assert "MackChainLadder - Summary" in book.sheetnames
+        assert "MackChainLadder - Projection" in book.sheetnames

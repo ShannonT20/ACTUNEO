@@ -26,6 +26,7 @@ from .bornhuetter_ferguson import BornhuetterFerguson
 from .cape_cod import CapeCod
 from .bootstrap import BootChainLadder
 from .datasets import load_raa, load_genins
+from .report import compare_methods, export_reserving_report
 
 __all__ = [
     'Triangle',
@@ -38,6 +39,8 @@ __all__ = [
     'MackChainLadder',
     'BootChainLadder',
     'estimate_tail_factor',
+    'compare_methods',
+    'export_reserving_report',
     'load_raa',
     'load_genins',
 ]
