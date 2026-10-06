@@ -9,6 +9,37 @@ Unreleased
 Added
 ~~~~~
 
+* ``actuneo.ifrs17``, premium allocation approach:
+
+  * ``PAAGroup``: liability for remaining coverage, insurance revenue, deferral or expensing
+    of acquisition cash flows, loss component for onerous groups, liability for incurred
+    claims, and the IFRS 17.100 reconciliation
+  * ``LiabilityForIncurredClaims``: discounting and risk adjustment, taken directly from a
+    reserving model; ``lic_analysis_of_change`` splits its movement into incurred claims,
+    prior-period adjustments and finance expenses
+  * Risk adjustment by confidence level or cost of capital, and the implied confidence level
+  * ``PAAReinsuranceHeld`` with a loss-recovery component
+  * ``IFRS17Statements``: statement of profit or loss, financial position and cash flows,
+    and key ratios
+  * ``earned_premium_by_period`` and ``unearned_premium`` from a policy listing
+  * ``paa_eligibility`` test
+  * Opening balances for groups already in force, other attributable expenses, and the
+    option to present part of insurance finance expenses in other comprehensive income
+  * ``group_contracts``: portfolio, cohort and profitability groups
+  * Disclosure tables: ``claims_development_table`` (IFRS 17.130), ``maturity_analysis``
+    (IFRS 17.132) and ``lic_sensitivity`` (IFRS 17.128)
+  * Statement of changes in equity, notes on insurance service expenses and finance
+    income and expenses, and ``supplementary_position`` showing the carrying amount as
+    unearned premium, premiums receivable, deferred acquisition costs and claims reserves
+  * ``lrc_discount_rate`` for a significant financing component in the liability for
+    remaining coverage (IFRS 17.56)
+
+  The liability for remaining coverage reproduces the IASB premium allocation approach example
+* ``ChainLadder.cash_flows_by_origin``
+* ``actuneo.finance``: helpers for hyperinflation restatement (``restate``,
+  ``net_monetary_gain_or_loss``, ``cumulative_inflation``)
+* A Status and Limitations page stating what is implemented, how each part was checked and
+  what is missing
 * ``Triangle.from_transactions``: build a triangle from a listing of dated payments or
   claims, with yearly, quarterly or monthly origin and development periods
 * ``cash_flows``, ``future_incremental`` and ``discounted_reserve`` (flat rate or yield curve)
@@ -29,6 +60,8 @@ Changed
   the triangle; ``BootChainLadder`` handles fitted values of zero
 * The Mack sigma extrapolation and tail uncertainty were compared with the source of the
   R ChainLadder package and follow the same algorithm
+* README and documentation no longer describe unbuilt features (regulatory templates,
+  multi-currency modelling, calibrated local data) as available
 
 Version 0.3.0 (2026-10-05)
 --------------------------

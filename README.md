@@ -1,4 +1,4 @@
-# ACTUNEO: Comprehensive Actuarial Python Library
+# ACTUNEO: African Actuarial Python Library
 
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Documentation Status](https://readthedocs.org/projects/actuneo/badge/?version=latest)](https://actuneo.readthedocs.io/en/latest/?badge=latest)
@@ -10,6 +10,12 @@
 
 ACTUNEO is an open-source, community-driven actuarial Python library that empowers African and Zimbabwean actuaries to perform core actuarial, financial, and statistical computations with ease. The goal is to build a localized yet globally compatible toolkit that supports insurance, pensions, and investment analytics, while integrating with modern data science tools.
 
+## Status
+
+ACTUNEO is an early-stage library. It has not been reviewed by an independent actuary and has not yet been run on a real insurer's data. Some parts reproduce published figures; others are checked only by hand calculation. It is not certified for statutory or audited reporting: check its output independently before relying on it.
+
+**Read [Status and Limitations](docs/status.rst) before using it.** It lists what is implemented, how each part was checked, and what is missing.
+
 ## Features
 
 ### Implemented Modules
@@ -18,12 +24,13 @@ ACTUNEO is an open-source, community-driven actuarial Python library that empowe
 - **finance**: Interest theory, yield curve construction/interpolation, duration, and convexity
 - **life**: Life assurance, annuities, premiums and reserves, for one or two lives
 - **loss_reserving**: Claims triangles, chain-ladder (basic and inflation-adjusted), average cost per claim, Bornhuetter-Ferguson, Mack's standard error and bootstrap
+- **ifrs17**: Premium allocation approach, liability for incurred claims with discounting and risk adjustment, reinsurance held, and the IFRS 17 statement of profit or loss, financial position and cash flows
 - **zimbabwe**: Catalogue of the Zimbabwe 2023 mortality tables and ZWL to ZiG conversion
 
 ### In Development (Scaffolding Present)
 
 - **pensions**: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
-- **ifrs17**: Insurance contract measurement models (GMM, VFA, PAA), CSM, risk adjustment, discounting
+- **ifrs17** (further): General measurement model (GMM) and variable fee approach (VFA), with the contractual service margin
 - **macro_africa**: Country-specific economic data connectors (inflation, GDP, currency exchange)
 - **simulation**: Monte Carlo simulations for stochastic actuarial models
 - **utils**: Data input-output helpers, validation, and reporting utilities
@@ -134,7 +141,8 @@ The documentation includes:
 
 - **Installation Guide**: Step-by-step installation instructions
 - **Quick Start**: Get started with ACTUNEO in minutes
-- **Examples**: Comprehensive code examples for all modules
+- **Examples**: Worked examples for the implemented modules
+- **Status and Limitations**: What is and is not implemented, and how it was checked
 - **API Reference**: Complete API documentation for all classes and functions
 - **Contributing Guide**: How to contribute to the project
 - **Changelog**: Version history and release notes

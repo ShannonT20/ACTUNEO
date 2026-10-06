@@ -340,6 +340,118 @@ openpyxl (``pip install actuneo[excel]``):
 
    mack.to_excel("raa_reserve.xlsx")     # summary, triangle, projection, factors, cash flows
 
+IFRS 17: Premium Allocation Approach
+------------------------------------
+
+A group of one-year motor policies followed over four quarters. The premium
+of 1,200 is received at the start (as SI 81 of 2023 requires in Zimbabwe) and
+commission of 180 is paid.
+
+.. code-block:: python
+
+   from actuneo.ifrs17 import PAAGroup, PAAReinsuranceHeld, IFRS17Statements
+
+   quarters = ["Q1", "Q2", "Q3", "Q4"]
+
+   motor = PAAGroup(
+       premiums_received=[1200, 0, 0, 0],
+       acquisition_cash_flows=[180, 0, 0, 0],
+       incurred_claims=[200, 210, 190, 220],        # claims incurred each quarter
+       incurred_risk_adjustment=[10, 10, 10, 10],
+       claims_paid=[100, 180, 200, 150],
+       closing_lic_pv=[100, 125, 120, 185],         # reserve at each quarter end
+       closing_lic_ra=[10, 14, 12, 15],
+       finance_expenses=[0, 2, 3, 3],               # unwind of discount
+       periods=quarters, name="Motor 2026", portfolio="Motor",
+   )
+
+   print(motor.lrc_rollforward())     # liability for remaining coverage
+   print(motor.lic_rollforward())     # liability for incurred claims
+   print(motor.profit_or_loss())
+   print(motor.reconciliation("Q2"))  # IFRS 17.100 reconciliation for the quarter
+
+   # 20% quota share reinsurance
+   quota_share = PAAReinsuranceHeld(
+       premiums_paid=[240, 0, 0, 0],
+       recoveries_incurred=[40, 42, 38, 44],
+       recoveries_received=[20, 36, 40, 30],
+       periods=quarters,
+   )
+
+   statements = IFRS17Statements(
+       [motor], [quota_share], opening_equity=500,
+       investment_return=[10, 12, 12, 13], other_operating_expenses=20, tax_rate=0.25,
+   )
+   print(statements.profit_or_loss())
+   print(statements.financial_position())
+   print(statements.cash_flows())
+   print(statements.key_ratios().round(3))
+
+The liability for incurred claims comes from a reserving model, discounted
+and with a risk adjustment at a chosen confidence level:
+
+.. code-block:: python
+
+   from actuneo.ifrs17 import LiabilityForIncurredClaims, implied_confidence_level
+   from actuneo.loss_reserving import MackChainLadder, load_raa
+
+   mack = MackChainLadder(load_raa(), est_sigma="mack")
+   lic = LiabilityForIncurredClaims.from_reserving(mack, discount_rate=0.08,
+                                                   confidence_level=0.75)
+   print(lic)
+
+Premiums are earned by days of cover from a policy listing:
+
+.. code-block:: python
+
+   import pandas as pd
+   from actuneo.ifrs17 import earned_premium_by_period, unearned_premium
+
+   policies = pd.DataFrame({
+       "premium":    [365.0, 730.0, 120.0],
+       "start_date": ["2025-01-01", "2025-07-01", "2025-11-01"],
+       "end_date":   ["2025-12-31", "2026-06-30", "2025-11-30"],
+   })
+   print(earned_premium_by_period(policies, ["2025-06-30", "2025-12-31"]))
+   print(unearned_premium(policies["premium"], policies["start_date"],
+                          policies["end_date"], "2025-12-31"))
+
+Grouping contracts, groups already in force, and the notes to the accounts:
+
+.. code-block:: python
+
+   from actuneo.ifrs17 import (
+       group_contracts, claims_development_table, maturity_analysis, lic_sensitivity,
+   )
+
+   # Portfolio, annual cohort and profitability group for each policy
+   book = pd.DataFrame({
+       "portfolio": ["Motor", "Motor", "Fire"],
+       "start_date": ["2025-03-01", "2026-01-10", "2025-06-01"],
+       "expected_combined_ratio": [0.70, 1.10, 0.95],
+   })
+   print(group_contracts(book)[["portfolio", "cohort", "profitability", "group"]])
+
+   # A group part way through its cover, starting from last year's closing balances
+   in_force = PAAGroup(
+       premiums_received=[0, 0], expected_premium=600,
+       opening_lrc=510, opening_deferred_acquisition_cash_flows=90,
+       opening_lic_pv=300, incurred_claims=[220, 230], claims_paid=[250, 260],
+       finance_expenses=[6, 5], finance_expenses_in_oci=[2, 1],   # OCI option
+       periods=["H1", "H2"],
+   )
+   accounts = IFRS17Statements([in_force], opening_equity=400)
+   print(accounts.profit_or_loss(detailed=True))   # with other comprehensive income
+   print(accounts.changes_in_equity())
+   print(accounts.supplementary_position())        # unearned premium, DAC, claims reserves
+
+   # Notes on incurred claims
+   print(claims_development_table(load_raa(), discount_rate=0.08,
+                                  risk_adjustment=lic.risk_adjustment).round(0))
+   print(maturity_analysis(mack.cash_flows(), discount_rate=0.08).round(0))
+   print(lic_sensitivity(mack.cash_flows(), discount_rate=0.08,
+                         risk_adjustment=lic.risk_adjustment).round(0))
+
 Next Steps
 ----------
 

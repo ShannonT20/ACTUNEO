@@ -1,5 +1,5 @@
-ACTUNEO: Comprehensive Actuarial Python Library
-================================================
+ACTUNEO: African Actuarial Python Library
+=========================================
 
 **ACTUNEO** is an open-source, community-driven actuarial Python library that empowers African and Zimbabwean actuaries to perform core actuarial, financial, and statistical computations with ease.
 
@@ -41,17 +41,18 @@ Key Features
 African Market Focus
 ~~~~~~~~~~~~~~~~~~~~
 
-* **Localized Data Support**: Mortality, inflation, and interest rate tables calibrated to African markets
-* **Regulatory Alignment**: Built-in parameters for IPEC Zimbabwe, PASA, SAM reporting
-* **Currency Handling**: Multi-currency modeling (USD, ZWL, Rand, etc.) with inflation adjustment
-* **Socioeconomic Context**: Assumptions for informal sector, microinsurance, and low-coverage environments
+* **Available now**: the Zimbabwe 2023 mortality tables, the ZWL to ZiG conversion rate, and notes on how Zimbabwean rules affect IFRS 17
+* **Not yet available**: regulatory return templates (IPEC, PASA, SAM), multi-currency modelling, local inflation and interest rate data
+
+ACTUNEO is an early-stage library that has not been independently reviewed.
+See :doc:`status` for what is implemented, how it has been checked and its
+limitations.
 
 Technical Advantages
 ~~~~~~~~~~~~~~~~~~~~
 
-* **Integration**: Works seamlessly with pandas, numpy, scikit-learn, plotly
-* **Open Development**: Community-driven through GitHub
-* **Modern Approach**: Combines traditional actuarial methods with data science
+* **Built on** numpy, pandas and scipy; results are returned as pandas tables
+* **Open development** on GitHub, with tests that run every documentation example
 
 Installation
 ------------
@@ -136,6 +137,7 @@ Contents
    installation
    quickstart
    examples
+   status
 
 .. toctree::
    :maxdepth: 2
