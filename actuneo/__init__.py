@@ -13,12 +13,14 @@ Modules:
 - ifrs17: Premium allocation approach, liability for incurred claims, risk adjustment,
   reinsurance held and the IFRS 17 financial statements
 - zimbabwe: Zimbabwe 2023 mortality table catalogue and currency reference data
+- simulation: Aggregate claims and a claims simulator for testing reserving methods
+- macro_africa: World Bank economic indicators for African countries
 
 Planned modules (not yet implemented):
 - pensions: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
 - ifrs17 (further): General measurement model and variable fee approach, with the CSM
-- macro_africa: Country-specific economic data connectors (inflation, GDP, currency exchange)
-- simulation: Monte Carlo simulations for stochastic actuarial models
+- macro_africa (further): data beyond the World Bank indicators now read
+- simulation (further): stochastic models beyond aggregate claims and claim payments
 - utils: Excel/CSV input-output functions, validation, and reporting
 
 Author: Shannon Tafadzwa Sikadi
@@ -35,6 +37,8 @@ from . import finance
 from . import life
 from . import loss_reserving
 from . import ifrs17
+from . import simulation
+from . import macro_africa
 from . import zimbabwe
 from . import templates
 # Other modules will be imported as they are developed
@@ -45,6 +49,8 @@ __all__ = [
     'life',
     'loss_reserving',
     'ifrs17',
+    'simulation',
+    'macro_africa',
     'zimbabwe',
     'templates',
     # Add other modules as they are implemented
