@@ -680,6 +680,76 @@ class MackChainLadder(ChainLadder):
         return pd.DataFrame(values, index=index,
                             columns=[f"ibnr_{100 * p:g}%" for p in probabilities])
 
+    def cdr(self) -> pd.DataFrame:
+        """
+        One-year reserve risk: the standard error of the claims development
+        result (CDR) over the next year, by Merz and Wuthrich (2008).
+
+        Mack's standard error measures uncertainty until every claim is
+        settled. The claims development result is the change in the estimate
+        of ultimate claims between now and one year from now, after one more
+        diagonal is observed and the chain-ladder is refitted. Its standard
+        error is the risk over a one-year horizon, as used in solvency
+        regimes such as Solvency II.
+
+        Returns:
+            DataFrame by origin period with the reserve, the one-year
+            standard error and Mack's standard error to ultimate, and a
+            "Total" row. No tail factor is allowed for.
+
+        Reference: Merz, M. and Wuthrich, M.V. (2008). Modelling the claims
+        development result for solvency purposes. CAS E-Forum, Fall 2008.
+        """
+        if self.tail != 1.0:
+            raise ValueError("The one-year claims development result is not defined with a "
+                             "tail factor")
+        if self.alpha != 1.0:
+            raise ValueError("The one-year claims development result needs alpha = 1")
+        cum, full = self.triangle.values, self._full
+        n_origin, n_dev = full.shape
+        latest = self._latest_idx
+        f, sigma2 = self._f, self.sigma.to_numpy() ** 2
+
+        # For each development step: claims on the latest diagonal, and the
+        # column total of the origin periods already past that step
+        diagonal = np.zeros(n_dev - 1)
+        past = np.zeros(n_dev - 1)
+        for j in range(n_dev - 1):
+            diagonal[j] = cum[latest == j, j].sum()
+            past[j] = cum[latest > j, j].sum()
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = sigma2 / f ** 2
+            # Effect on later factors of adding the next diagonal
+            later = np.where(past > 0, diagonal / (past + diagonal) * ratio / past, 0.0)
+            own = np.where(past > 0, ratio / past, 0.0)
+
+        ultimate = full[:, -1]
+        variance = np.zeros(n_origin)
+        shared = np.zeros(n_origin)
+        for i, j0 in enumerate(latest):
+            if j0 >= n_dev - 1:
+                continue
+            shared[i] = own[j0] + later[j0 + 1:].sum()
+            variance[i] = ultimate[i] ** 2 * (ratio[j0] / cum[i, j0] + shared[i])
+
+        total = variance.sum()
+        order = np.argsort(latest)[::-1]  # most developed first
+        for a in range(len(order)):
+            for b in range(a + 1, len(order)):
+                i, k = order[a], order[b]
+                if latest[i] >= n_dev - 1 or latest[k] >= n_dev - 1:
+                    continue
+                # The less developed period shares the factors of the more developed one
+                total += 2 * ultimate[i] * ultimate[k] * shared[i]
+
+        table = pd.DataFrame({
+            "ibnr": self.ibnr,
+            "cdr_se": np.sqrt(variance),
+            "mack_se": self.mack_se,
+        })
+        table.loc["Total"] = [self.ibnr.sum(), np.sqrt(total), self.total_mack_se]
+        return table
+
     def plot_residuals(self, ax=None):
         """
         Plot the standardised residuals against development step (needs

@@ -60,3 +60,57 @@ def load_genins() -> Triangle:
     ]
     return Triangle(values, origin=range(1, 11), development=range(1, 11),
                     cumulative=True, name="GenIns")
+
+
+def load_mw2008() -> Triangle:
+    """
+    Cumulative claims triangle of Merz and Wuthrich (2008), nine accident
+    years, used in their paper on the one-year claims development result
+    and shipped with the R ChainLadder package as ``MW2008``.
+
+    Source: Merz, M. and Wuthrich, M.V. (2008). Modelling the claims
+    development result for solvency purposes. CAS E-Forum, Fall 2008.
+    """
+    values = [
+        [2202584, 3210449, 3468122, 3545070, 3621627, 3644636, 3669012, 3674511, 3678633],
+        [2350650, 3553023, 3783846, 3840067, 3865187, 3878744, 3898281, 3902425, _NA],
+        [2321885, 3424190, 3700876, 3798198, 3854755, 3878993, 3898825, _NA, _NA],
+        [2171487, 3165274, 3395841, 3466453, 3515703, 3548422, _NA, _NA, _NA],
+        [2140328, 3157079, 3399262, 3500520, 3585812, _NA, _NA, _NA, _NA],
+        [2290664, 3338197, 3550332, 3641036, _NA, _NA, _NA, _NA, _NA],
+        [2148216, 3219775, 3428335, _NA, _NA, _NA, _NA, _NA, _NA],
+        [2143728, 3158581, _NA, _NA, _NA, _NA, _NA, _NA, _NA],
+        [2144738, _NA, _NA, _NA, _NA, _NA, _NA, _NA, _NA],
+    ]
+    return Triangle(values, origin=range(1, 10), development=range(1, 10),
+                    cumulative=True, name="MW2008")
+
+
+def load_mcl() -> tuple:
+    """
+    Paid and incurred triangles of Quarg and Mack (2004), seven accident
+    years, used to illustrate the Munich chain-ladder and shipped with the
+    R ChainLadder package as ``MCLpaid`` and ``MCLincurred``.
+
+    Returns:
+        ``(paid, incurred)``
+    """
+    paid = [
+        [576, 1804, 1970, 2024, 2074, 2102, 2131],
+        [866, 1948, 2162, 2232, 2284, 2348, _NA],
+        [1412, 3758, 4252, 4416, 4494, _NA, _NA],
+        [2286, 5292, 5724, 5850, _NA, _NA, _NA],
+        [1868, 3778, 4648, _NA, _NA, _NA, _NA],
+        [1442, 4010, _NA, _NA, _NA, _NA, _NA],
+        [2044, _NA, _NA, _NA, _NA, _NA, _NA],
+    ]
+    incurred = [
+        [978, 2104, 2134, 2144, 2174, 2182, 2174],
+        [1844, 2552, 2466, 2480, 2508, 2454, _NA],
+        [2904, 4354, 4698, 4600, 4644, _NA, _NA],
+        [3502, 5958, 6070, 6142, _NA, _NA, _NA],
+        [2812, 4882, 4852, _NA, _NA, _NA, _NA],
+        [2642, 4406, _NA, _NA, _NA, _NA, _NA],
+        [5022, _NA, _NA, _NA, _NA, _NA, _NA],
+    ]
+    return (Triangle(paid, name="MCL paid"), Triangle(incurred, name="MCL incurred"))
