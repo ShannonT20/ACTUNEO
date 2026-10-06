@@ -25,7 +25,8 @@ from .average_cost import AverageCostPerClaim, grossing_up
 from .bornhuetter_ferguson import BornhuetterFerguson
 from .cape_cod import CapeCod
 from .bootstrap import BootChainLadder
-from .datasets import load_raa, load_genins
+from .munich import MunichChainLadder
+from .datasets import load_raa, load_genins, load_mw2008, load_mcl
 from .report import compare_methods, export_reserving_report
 
 __all__ = [
@@ -41,6 +42,9 @@ __all__ = [
     'estimate_tail_factor',
     'compare_methods',
     'export_reserving_report',
+    'MunichChainLadder',
     'load_raa',
+    'load_mw2008',
+    'load_mcl',
     'load_genins',
 ]

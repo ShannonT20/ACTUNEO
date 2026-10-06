@@ -599,3 +599,112 @@ class TestReservingReport:
         book = openpyxl.load_workbook(path)
         assert "MackChainLadder - Summary" in book.sheetnames
         assert "MackChainLadder - Projection" in book.sheetnames
+
+
+class TestOneYearReserveRisk:
+    """Claims development result of Merz and Wuthrich (2008)."""
+
+    def test_published_results(self):
+        """The paper's triangle; figures as printed by the R ChainLadder package."""
+        from actuneo.loss_reserving import load_mw2008
+        mack = MackChainLadder(load_mw2008(), est_sigma="mack")
+        table = mack.cdr()
+        expected_cdr = [0, 566.1744, 1486.5603, 3923.0986, 9722.8598, 28442.6216,
+                        20954.2870, 28119.3180, 53320.8210]
+        expected_mack = [0, 566.1744, 1563.8075, 4157.2733, 10536.4380, 30319.4638,
+                         35967.0384, 45090.1821, 69552.3397]
+        np.testing.assert_allclose(table["cdr_se"].iloc[:9], expected_cdr, atol=5e-4)
+        np.testing.assert_allclose(table["mack_se"].iloc[:9], expected_mack, atol=5e-4)
+        assert table.loc["Total", "cdr_se"] == pytest.approx(81080.5468, abs=5e-4)
+        assert table.loc["Total", "mack_se"] == pytest.approx(108401.3875, abs=5e-4)
+        assert table.loc["Total", "ibnr"] == pytest.approx(2237826.107, abs=5e-3)
+
+    def test_properties(self):
+        mack = MackChainLadder(load_raa(), est_sigma="mack")
+        table = mack.cdr()
+        # With one development step left the one-year and ultimate views coincide
+        assert table["cdr_se"].iloc[1] == pytest.approx(table["mack_se"].iloc[1])
+        # One year of risk is never more than the risk to ultimate
+        assert (table["cdr_se"] <= table["mack_se"] + 1e-9).all()
+        assert table["cdr_se"].iloc[0] == 0
+        with pytest.raises(ValueError, match="tail"):
+            MackChainLadder(load_raa(), est_sigma="mack", tail=1.05, tail_se=0.01,
+                            tail_sigma=1.0).cdr()
+
+
+class TestMunichChainLadder:
+    def test_correlation_parameters(self):
+        """Quarg and Mack's data: slopes as reported by the R ChainLadder package."""
+        from actuneo.loss_reserving import MunichChainLadder, load_mcl
+        paid, incurred = load_mcl()
+        mcl = MunichChainLadder(paid, incurred)
+        assert mcl.lambda_paid == pytest.approx(0.636, abs=5e-4)
+        assert mcl.lambda_incurred == pytest.approx(0.4362, abs=5e-5)
+
+    def test_projections_are_pulled_together(self):
+        from actuneo.loss_reserving import MunichChainLadder, load_mcl
+        paid, incurred = load_mcl()
+        mcl = MunichChainLadder(paid, incurred)
+        separate_gap = (ChainLadder(incurred).ultimate - ChainLadder(paid).ultimate).abs()
+        joint_gap = (mcl.ultimate_incurred - mcl.ultimate_paid).abs()
+        # The youngest year has the widest gap under separate chain-ladders
+        assert joint_gap.iloc[-1] < separate_gap.iloc[-1]
+        assert joint_gap.sum() < separate_gap.sum()
+        summary = mcl.summary()
+        assert summary.loc["Total", "latest_paid"] == 25_525
+        assert 0.95 < summary.loc["Total", "ultimate_ratio"] < 1.0
+        # The fully developed year is unchanged
+        assert mcl.ultimate_paid.iloc[0] == 2131 and mcl.ultimate_incurred.iloc[0] == 2174
+
+    def test_no_correlation_gives_the_plain_chain_ladder(self):
+        """Paid a fixed share of incurred in every cell: nothing to adjust."""
+        from actuneo.loss_reserving import MunichChainLadder
+        raa = load_raa()
+        incurred = Triangle(raa.values / 0.8, raa.origin, raa.development)
+        mcl = MunichChainLadder(raa, incurred)
+        np.testing.assert_allclose(mcl.ultimate_paid, ChainLadder(raa).ultimate)
+
+    def test_invalid(self):
+        from actuneo.loss_reserving import MunichChainLadder, load_mcl
+        paid, _ = load_mcl()
+        with pytest.raises(ValueError, match="same cells"):
+            MunichChainLadder(paid, load_raa())
+
+
+class TestMissingCells:
+    @pytest.fixture
+    def gappy(self):
+        values = load_raa().values.copy()
+        values[2, 3] = np.nan     # a lost figure inside the triangle
+        return values
+
+    def test_rejected_unless_allowed(self, gappy):
+        raa = load_raa()
+        with pytest.raises(ValueError, match="missing values"):
+            Triangle(gappy, raa.origin, raa.development)
+        tri = Triangle(gappy, raa.origin, raa.development, allow_missing=True)
+        assert tri.has_missing
+
+    def test_chain_ladder_skips_the_affected_link_ratios(self, gappy):
+        raa = load_raa()
+        tri = Triangle(gappy, raa.origin, raa.development, allow_missing=True)
+        cl, full = ChainLadder(tri), ChainLadder(raa)
+        # Steps 3-4 and 4-5 lose the 1983 origin year; the others are unchanged
+        assert cl.factors["1-2"] == pytest.approx(full.factors["1-2"])
+        assert cl.factors["3-4"] != pytest.approx(full.factors["3-4"])
+        expected = (raa.values[[0, 1, 3, 4, 5, 6], 3].sum()
+                    / raa.values[[0, 1, 3, 4, 5, 6], 2].sum())
+        assert cl.factors["3-4"] == pytest.approx(expected)
+        assert cl.total_ibnr == pytest.approx(full.total_ibnr, rel=0.05)
+        mack = MackChainLadder(tri, est_sigma="mack")
+        assert np.isfinite(mack.total_mack_se)
+
+    def test_methods_that_need_a_complete_triangle(self, gappy):
+        raa = load_raa()
+        tri = Triangle(gappy, raa.origin, raa.development, allow_missing=True)
+        with pytest.raises(ValueError, match="missing cells"):
+            BootChainLadder(tri, 10)
+        with pytest.raises(ValueError, match="missing cells"):
+            tri.to_incremental()
+        with pytest.raises(ValueError, match="only supported for cumulative"):
+            Triangle(gappy, cumulative=False, allow_missing=True)
