@@ -387,7 +387,7 @@ class IFRS17Statements:
         Returns:
             Dictionary of sheet name to :class:`actuneo.utils.Sheet`
         """
-        from ..utils import Sheet, RATIO_FORMAT
+        from ..utils import Sheet, RATIO_FORMAT, TEAL, GREY
 
         unit = f"In {currency}" if currency else ""
         span = (f"For the periods {self.periods[0]} to {self.periods[-1]}"
@@ -415,6 +415,10 @@ class IFRS17Statements:
                             "Net financial result", "Profit before tax",
                             "Profit for the period", "Total comprehensive income"],
                 references=self._REFERENCES,
+                chart={"kind": "line", "title": "Insurance revenue and results by period",
+                       "rows": ["Insurance revenue", "Insurance service result",
+                                "Profit for the period"]},
+                description="Insurance service result, financial result, profit and OCI",
             ),
             "Statement of financial position": Sheet(
                 ordered, "Statement of financial position", point,
@@ -422,15 +426,20 @@ class IFRS17Statements:
                             "Total liabilities and equity"],
                 section_rows=["Assets", "Liabilities", "Equity"],
                 references=self._REFERENCES,
+                chart={"kind": "line", "title": "Assets, liabilities and equity",
+                       "rows": ["Total assets", "Total liabilities", "Total equity"]},
+                description="Assets, liabilities and equity at each period end",
             ),
             "Statement of cash flows": Sheet(
                 self.cash_flows(total=True), "Statement of cash flows", flow,
                 total_rows=["Net increase in cash and investments",
                             "Cash and investments at end of period"],
+                description="Cash received and paid, direct method",
             ),
             "Statement of changes in equity": Sheet(
                 self.changes_in_equity(total=True), "Statement of changes in equity", flow,
                 total_rows=["Total comprehensive income", "Equity at end of period"],
+                description="Movement in equity from profit and OCI",
             ),
             "Note - Insurance service expenses": Sheet(
                 self.insurance_service_expenses().assign(
@@ -438,6 +447,7 @@ class IFRS17Statements:
                 "Insurance service expenses", flow,
                 total_rows=["Insurance service expenses"],
                 references={"Insurance service expenses": "IFRS 17.103(b)"},
+                tab_color=TEAL, description="Insurance service expenses by nature",
             ),
             "Note - Finance income and expenses": Sheet(
                 self.finance_income_and_expenses().assign(Total=lambda t: t.sum(axis=1)),
@@ -446,6 +456,7 @@ class IFRS17Statements:
                             "Net finance income from reinsurance contracts",
                             "Net financial result including OCI"],
                 references={"Net finance expenses from insurance contracts": "IFRS 17.110"},
+                tab_color=TEAL, description="Finance result in profit or loss and in OCI",
             ),
             "Key ratios": Sheet(
                 self.key_ratios(total=True), "Key ratios", span,
@@ -454,6 +465,10 @@ class IFRS17Statements:
                             "Combined ratio including other expenses"],
                 note="Combined ratio = insurance service expenses / insurance revenue. "
                      "Insurers define these ratios differently.",
+                chart={"kind": "line", "title": "Combined ratio by period",
+                       "rows": ["Claims ratio", "Combined ratio",
+                                "Combined ratio net of reinsurance"]},
+                tab_color=TEAL, description="Claims, expense and combined ratios",
             ),
             "Supplementary - IFRS 4 view": Sheet(
                 self.supplementary_position(),
@@ -461,6 +476,8 @@ class IFRS17Statements:
                 total_rows=["Net insurance contract liabilities"],
                 note="Supplementary information. IFRS 17 presents one carrying amount; "
                      "these are the components reported under IFRS 4.",
+                tab_color=GREY,
+                description="Unearned premium, deferred acquisition costs, claims reserves",
             ),
         }
 
@@ -477,8 +494,25 @@ class IFRS17Statements:
         from ..utils import write_report
         write_report(path, self.presentation(entity, currency),
                      report_title=entity or "IFRS 17 financial statements",
-                     report_subtitle="Premium allocation approach",
-                     notes=_REPORT_NOTES)
+                     report_subtitle="IFRS 17 premium allocation approach"
+                                     + (f" | {currency}" if currency else ""),
+                     notes=_REPORT_NOTES, highlights=self.highlights())
+
+    def highlights(self) -> dict:
+        """Key figures for the cover of a report: label to (value, number format)."""
+        from ..utils import NUMBER_FORMAT, RATIO_FORMAT
+        profit = self.profit_or_loss(total=True)["Total"]
+        position = self.financial_position().iloc[:, -1]
+        ratios = self.key_ratios(total=True)["Total"]
+        return {
+            "Insurance revenue": (profit["Insurance revenue"], NUMBER_FORMAT),
+            "Insurance service result": (profit["Insurance service result"], NUMBER_FORMAT),
+            "Profit for the period": (profit["Profit for the period"], NUMBER_FORMAT),
+            "Combined ratio": (ratios["Combined ratio"], RATIO_FORMAT),
+            "Insurance contract liabilities": (position["Insurance contract liabilities"],
+                                               NUMBER_FORMAT),
+            "Total equity": (position["Total equity"], NUMBER_FORMAT),
+        }
 
 
 _REPORT_NOTES = (

@@ -304,7 +304,7 @@ class PAACase:
         Args:
             path: File name of the workbook, ending in .xlsx
         """
-        from ..utils import Sheet, write_report
+        from ..utils import Sheet, write_report, BLUE, GREY
         from .statements import _REPORT_NOTES
 
         entity = str(self.settings.get("entity", "") or "")
@@ -312,14 +312,15 @@ class PAACase:
         unit = f"In {currency}" if currency else ""
         sheets = self.statements.presentation(entity, currency)
 
-        def movement(table, title, closing_label="closing"):
-            return Sheet(table, title, unit, total_rows=[closing_label])
+        def movement(table, title, colour, closing_label="closing"):
+            return Sheet(table, title, unit, total_rows=[closing_label], tab_color=colour,
+                         description="Opening balance, movements and closing balance")
 
         for name, group in self.groups.items():
             sheets[f"{name} - LRC"] = movement(
-                group.lrc_rollforward().T, f"{name}: liability for remaining coverage")
+                group.lrc_rollforward().T, f"{name}: liability for remaining coverage", BLUE)
             sheets[f"{name} - LIC"] = movement(
-                group.lic_rollforward().T, f"{name}: liability for incurred claims")
+                group.lic_rollforward().T, f"{name}: liability for incurred claims", BLUE)
             sheets[f"{name} - Reconciliation"] = Sheet(
                 group.reconciliation("all"),
                 f"{name}: reconciliation of insurance contract liabilities",
@@ -330,12 +331,14 @@ class PAACase:
                             "Insurance revenue": "IFRS 17.103(a)",
                             "Insurance service result": "IFRS 17.103",
                             "Premiums received": "IFRS 17.105(a)(i)"},
+                tab_color=BLUE,
+                description="IFRS 17.100 reconciliation by remaining coverage and incurred claims",
             )
         for name, group in self.reinsurance.items():
             sheets[f"{name} - ARC"] = movement(
-                group.arc_rollforward().T, f"{name}: asset for remaining coverage")
+                group.arc_rollforward().T, f"{name}: asset for remaining coverage", GREY)
             sheets[f"{name} - AIC"] = movement(
-                group.aic_rollforward().T, f"{name}: asset for incurred claims")
+                group.aic_rollforward().T, f"{name}: asset for incurred claims", GREY)
             sheets[f"{name} - Reconciliation"] = Sheet(
                 group.reconciliation("all"),
                 f"{name}: reconciliation of reinsurance contract assets",
@@ -344,10 +347,13 @@ class PAACase:
                             "Total changes in profit or loss", "Total cash flows",
                             "Closing assets"],
                 references={"Opening assets": "IFRS 17.100"},
+                tab_color=GREY,
+                description="IFRS 17.100 reconciliation of reinsurance contract assets",
             )
         write_report(path, sheets, report_title=entity or "PAA case",
-                     report_subtitle="IFRS 17 premium allocation approach",
-                     notes=_REPORT_NOTES)
+                     report_subtitle="IFRS 17 premium allocation approach"
+                                     + (f" | {currency}" if currency else ""),
+                     notes=_REPORT_NOTES, highlights=self.statements.highlights())
 
     def __repr__(self) -> str:
         entity = self.settings.get("entity", "PAA case")
