@@ -250,6 +250,24 @@ class ChainLadder:
         return pd.Series(flows, index=pd.RangeIndex(1, n_periods + 1, name="period"),
                          name="cash_flow")
 
+    def cash_flows_by_origin(self) -> pd.DataFrame:
+        """
+        Expected future claims by origin period and period of payment.
+
+        Returns:
+            DataFrame with origin periods in rows and future periods (1, 2,
+            ...) in columns. The column totals are :meth:`cash_flows`.
+        """
+        future = self.future_incremental().to_numpy()
+        periods_ahead = np.arange(future.shape[1])[None, :] - self._latest_idx[:, None]
+        valid = ~np.isnan(future) & (periods_ahead > 0)
+        n_periods = int(periods_ahead[valid].max()) if valid.any() else 0
+        flows = np.zeros((future.shape[0], n_periods))
+        rows = np.broadcast_to(np.arange(future.shape[0])[:, None], future.shape)
+        np.add.at(flows, (rows[valid], periods_ahead[valid] - 1), future[valid])
+        return pd.DataFrame(flows, index=self.full_triangle.index,
+                            columns=pd.RangeIndex(1, n_periods + 1, name="period"))
+
     def discounted_reserve(self,
                            discount_rate,
                            timing: float = 0.5,
