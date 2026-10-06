@@ -57,9 +57,12 @@ What is implemented
      - Hand calculation and identities. No published table of values has
        been reproduced
    * - Finance
-     - Interest rate conversions, annuities certain, loans, yield curve
-       interpolation, bootstrapping from par rates, duration and convexity
-     - Hand calculation and identities
+     - Interest rate conversions, force of interest, annuities certain,
+       cashflows and project appraisal, loan schedules, bonds and equities,
+       spot and forward rates, duration, convexity and immunisation
+     - Published figures: the worked answers of a standard compound interest
+       text, to within their rounding. Yield curve interpolation and the
+       Nelson-Siegel fit: hand calculation only
    * - Run-off triangles
      - Triangle handling, basic and inflation-adjusted chain ladder, average
        cost per claim, Bornhuetter-Ferguson
@@ -123,7 +126,24 @@ Finance
 * Yield curves are simple: interpolation of supplied rates, a basic
   Nelson-Siegel fit and par-rate bootstrapping. There are no stochastic
   interest rate models.
-* Bond duration functions discount at an annual effective yield.
+* Bond dates are measured in years from issue. There are no calendar
+  dates, day-count conventions, ex-dividend periods or settlement lags, and
+  accrued interest is in simple proportion to time.
+* Index-linked bonds take the index value that applies to each payment as
+  an input. Looking up a lagged index, or projecting an index forward at an
+  assumed rate of inflation, is left to the user.
+* Uncertain payments are allowed for by a probability on each payment (the
+  expected value). There is no model of default, recovery or correlation.
+* The theories of the term structure (expectations, liquidity preference,
+  market segmentation) are explanations, not calculations, and are not
+  represented.
+* A yield is found by search. Cashflows that change sign more than once can
+  have several yields; the one nearest to the ``guess`` is returned.
+* Immunisation is Redington's theory: it protects only against a small,
+  uniform change in a flat rate of interest.
+* Two styles coexist: the earlier classes (``InterestTheory``,
+  ``DurationConvexity``) and the newer functions. The older bond duration
+  functions discount at an annual effective yield.
 
 Loss reserving
 ~~~~~~~~~~~~~~

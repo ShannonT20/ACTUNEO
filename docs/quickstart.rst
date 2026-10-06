@@ -122,6 +122,63 @@ Yield Curves
    par_curve = YieldCurve.from_par_rates([1, 2, 3, 5], [0.03, 0.035, 0.04, 0.045],
                                          coupon_freq=1)
 
+Compound Interest
+~~~~~~~~~~~~~~~~~
+
+The functions below cover the standard compound interest calculations. Rates
+are effective annual rates unless stated, and annuity functions value 1 per
+year.
+
+.. code-block:: python
+
+   from actuneo.finance import (
+       InterestRate, ForceOfInterest, annuity, accumulated_annuity, increasing_annuity,
+       Cashflows, Loan, annual_percentage_rate, Bond, par_yield, spot_rates_from_forwards,
+       discounted_mean_term, convexity, immunisation_check,
+   )
+
+   # Any form of rate in, any form out
+   rate = InterestRate.from_nominal(0.12, 12)        # 12% pa convertible monthly
+   print(f"effective {rate.i:.6f}, d {rate.d:.6f}, force {rate.delta:.6f}")
+   print(f"convertible quarterly {rate.nominal(4):.6f}")
+   print(rate.summary())
+
+   # A force of interest that changes over time: 4% to time 6, then 0.2 - 0.02t
+   force = ForceOfInterest([(6, [0.04]), (None, [0.2, -0.02])])
+   print(f"400 at time 3 accumulates to {force.accumulate(400, 3, 8):.2f} at time 8")
+
+   # Annuities: 1 per year, so multiply by the annual amount
+   print(f"a(20) at 10%:               {annuity(20, 0.10):.4f}")
+   print(f"monthly in advance:         {annuity(20, 0.10, p=12, timing='advance'):.4f}")
+   print(f"continuous, deferred 5:     {annuity(20, 0.10, timing='continuous', deferred=5):.4f}")
+   print(f"s(10) at 7%:                {accumulated_annuity(10, 0.07):.4f}")
+   print(f"(Ia)(25) at 6%:             {increasing_annuity(25, 0.06):.4f}")
+
+   # Project appraisal
+   project = (Cashflows([0], [-25_000]).add_continuous(0, 5, 8_000).add(6, -5_000))
+   print(f"NPV at 10%:  {project.net_present_value(0.10):,.2f}")
+   print(f"IRR:         {project.internal_rate_of_return():.2%}")
+   print(f"Discounted payback period: {project.discounted_payback_period(0.10):.2f} years")
+
+   # Loan schedule
+   loan = Loan(50_000, 0.08, 10, payments_per_year=12)
+   print(f"Monthly repayment {loan.payment:.2f}, interest in year 1 {loan.interest_paid(1, 12):,.2f}")
+   print(loan.schedule().head())
+   print(f"APR: {annual_percentage_rate(7500, 368.75, 24):.2%}")
+
+   # Bond price net of income tax, and the yield for a given price
+   bond = Bond(0.06, 13, frequency=2)
+   print(f"Price for a 5% net yield with 40% income tax: {bond.price(0.05, income_tax=0.40):.4f}")
+   print(f"Gross redemption yield at a price of 95: {bond.redemption_yield(95):.3%}")
+
+   # Term structure and immunisation
+   spots = spot_rates_from_forwards([0.06, 0.065, 0.07])
+   print(f"3-year par yield: {par_yield(spots):.4%}")
+   print(f"Discounted mean term: {discounted_mean_term([10, 10, 110], [1, 2, 3], 0.08):.2f}")
+   check = immunisation_check([7.404, 31.834], [2, 25], [10, 20], [10, 15], 0.07,
+                              tolerance=1e-3)
+   print("Immunised:", check["immunised"])
+
 Life Insurance
 --------------
 

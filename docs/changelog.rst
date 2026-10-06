@@ -49,6 +49,31 @@ Added
   figures and contents, banded tables, highlighted totals, coloured tabs and charts
 * ``actuneo.templates``: Excel templates for a claims triangle and for a premium allocation
   approach case, each with a guide sheet (``save_template``)
+* ``actuneo.finance``, compound interest:
+
+  * ``InterestRate``: conversion between effective and nominal rates of interest and
+    discount, simple rates and the force of interest; ``ForceOfInterest`` for a force of
+    interest that varies with time, and continuous payment streams
+  * Annuities certain: ``annuity``, ``accumulated_annuity``, ``perpetuity``,
+    ``increasing_annuity``, ``decreasing_annuity``, ``continuously_increasing_annuity``
+    and ``geometric_annuity``
+  * ``Cashflows``: present and accumulated values, the yield on an equation of value,
+    payback periods and accumulated profit
+  * ``Loan``, ``loan_schedule``, ``annual_percentage_rate`` and ``flat_rate``
+  * ``Bond`` with income tax, capital gains tax and optional redemption dates;
+    ``equity_price``, ``equity_yield``, ``present_value_of_dividends`` and ``real_yield``
+  * Spot rates, forward rates and par yields; ``discounted_mean_term``, ``volatility``,
+    ``convexity``, ``immunisation_check`` and ``immunising_amounts``
+
+  * Bonds bought between coupon dates (dirty and clean price, accrued interest), tax paid
+    after a delay, price bounds for optional redemption dates, ``index_linked_cashflows``
+    and ``property_value``
+  * Uncertain payments (``probabilities``), ``has_unique_yield``, ``crossover_rate``,
+    deferred increasing annuities, ``stepped_annuity``, continuous-time spot and forward
+    rates, ``estimated_value_change``, and cashflow models of standard instruments
+    (``actuneo.finance.instruments``)
+
+  These are tested against the published answers to standard compound interest questions
 * ``actuneo.finance``: helpers for hyperinflation restatement (``restate``,
   ``net_monetary_gain_or_loss``, ``cumulative_inflation``)
 * A Status and Limitations page stating what is implemented, how each part was checked and
