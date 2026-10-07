@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![Documentation Status](https://readthedocs.org/projects/actuneo/badge/?version=latest)](https://actuneo.readthedocs.io/en/latest/?badge=latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI version](https://badge.fury.io/py/actuneo.svg)](https://badge.fury.io/py/actuneo)
+[![PyPI version](https://img.shields.io/pypi/v/actuneo.svg)](https://pypi.org/project/actuneo/)
 [![GitHub](https://img.shields.io/badge/GitHub-Repository-blue.svg)](https://github.com/ShannonT20/ACTUNEO)
 
 ## Vision and Objective
