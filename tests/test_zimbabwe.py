@@ -27,3 +27,12 @@ def test_currency_conversion():
     assert zimbabwe.CURRENCY_CODE == "ZWG"
     assert zimbabwe.zwl_to_zwg(2498.7242) == pytest.approx(1.0)
     assert zimbabwe.zwl_to_zwg(1_000_000) == pytest.approx(400.2043)
+
+
+def test_minimum_capital_as_reported():
+    assert zimbabwe.minimum_capital("non-life") == 1_500_000
+    assert zimbabwe.minimum_capital("Micro insurance") == 100_000
+    assert set(zimbabwe.MINIMUM_CAPITAL_USD) == {
+        "life", "funeral", "non-life", "reinsurance", "micro-insurance", "broker"}
+    with pytest.raises(ValueError, match="Unknown class"):
+        zimbabwe.minimum_capital("bank")

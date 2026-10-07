@@ -8,6 +8,8 @@ This module provides:
 - A catalogue of the Zimbabwe 2023 mortality tables shipped with ACTUNEO
 - Currency reference data for converting Zimbabwe dollar (ZWL) amounts
   to Zimbabwe Gold (ZiG)
+- Minimum capital requirements for insurers as reported for Statutory
+  Instrument 67 of 2025, for reference only
 
 Background
 ----------
@@ -47,6 +49,18 @@ ZWL_PER_ZWG = 2498.7242
 #: Date from which ZiG replaced the Zimbabwe dollar
 ZWG_EFFECTIVE_DATE = "2024-04-08"
 
+#: Minimum capital in US dollars by class of insurer, as reported in published
+#: summaries of Statutory Instrument 67 of 2025. Taken from secondary sources,
+#: not from the gazetted instrument: check the instrument before relying on them.
+MINIMUM_CAPITAL_USD = {
+    "life": 2_000_000,
+    "funeral": 500_000,
+    "non-life": 1_500_000,
+    "reinsurance": 2_000_000,
+    "micro-insurance": 100_000,
+    "broker": 100_000,
+}
+
 
 def mortality_tables() -> pd.DataFrame:
     """
@@ -84,6 +98,31 @@ def load_mortality_table(name: str) -> MortalityTable:
     return MortalityTable.from_zimbabwe_2023(name)
 
 
+def minimum_capital(insurer_class: str) -> int:
+    """
+    Minimum capital in US dollars for a class of insurer, as reported for
+    Statutory Instrument 67 of 2025.
+
+    The figures come from published summaries of the instrument, not from
+    the gazetted text, and regulations change. They are a reference point,
+    not a statement of what an insurer must hold: the risk-based capital
+    required under ZICARP is a separate calculation that this library does
+    not perform.
+
+    Args:
+        insurer_class: One of "life", "funeral", "non-life", "reinsurance",
+            "micro-insurance" or "broker"
+
+    Returns:
+        Minimum capital in US dollars
+    """
+    key = str(insurer_class).strip().lower().replace("_", "-").replace(" ", "-")
+    if key not in MINIMUM_CAPITAL_USD:
+        raise ValueError(
+            f"Unknown class {insurer_class!r}. Choose from {sorted(MINIMUM_CAPITAL_USD)}")
+    return MINIMUM_CAPITAL_USD[key]
+
+
 def zwl_to_zwg(amount_zwl: float) -> float:
     """
     Convert a Zimbabwe dollar (ZWL) amount to ZiG at the official April 2024
@@ -102,6 +141,8 @@ __all__ = [
     'mortality_tables',
     'load_mortality_table',
     'zwl_to_zwg',
+    'minimum_capital',
+    'MINIMUM_CAPITAL_USD',
     'CURRENCY_CODE',
     'ZWL_PER_ZWG',
     'ZWG_EFFECTIVE_DATE',
