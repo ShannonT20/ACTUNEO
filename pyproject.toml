@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "actuneo"
-version = "0.3.0"
+version = "0.4.0"
 description = "African Actuarial Python Library for insurance, pensions, and investment analytics"
 readme = "README.md"
 license = {text = "MIT"}
@@ -23,7 +23,7 @@ keywords = [
     "chain ladder",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Financial and Insurance Industry",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",

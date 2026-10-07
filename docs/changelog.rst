@@ -3,8 +3,11 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
-Unreleased
-----------
+Version 0.4.0 (2026-10-07)
+--------------------------
+
+Beta-quality release (first published as 0.4.0b1). See the Status and Limitations page for what has and has not been
+checked.
 
 Added
 ~~~~~

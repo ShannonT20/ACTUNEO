@@ -50,6 +50,10 @@ ACTUNEO is an early-stage library. It has not been reviewed by an independent ac
 pip install actuneo
 ```
 
+ACTUNEO is in beta. Read the [Status and Limitations](docs/status.rst) page before
+relying on any result. Releases before 0.4.0 contain calculation errors that have since
+been corrected: upgrade with `pip install --upgrade actuneo`.
+
 ### From Source
 
 ```bash
