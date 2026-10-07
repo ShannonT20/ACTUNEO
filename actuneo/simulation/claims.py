@@ -37,7 +37,8 @@ class ClaimsSimulator:
                  claim_cv: float = 1.5,
                  payment_pattern: Sequence[float] = (0.35, 0.25, 0.15, 0.10, 0.07, 0.05, 0.03),
                  inflation: float = 0.0,
-                 seed: Optional[int] = None):
+                 seed: Optional[int] = None,
+                 pattern_concentration: Optional[float] = None):
         """
         Args:
             n_years: Number of accident years
@@ -50,12 +51,21 @@ class ClaimsSimulator:
             inflation: Annual claims inflation, applied by calendar year of
                 payment
             seed: Seed of the random number generator
+            pattern_concentration: If given, each claim is paid in its own
+                proportions, drawn from a Dirichlet distribution centred on
+                the payment pattern. Smaller values make claims differ more
+                from each other; None pays every claim in exactly the
+                pattern's proportions, which gives triangles with no
+                randomness in their development.
         """
         pattern = np.asarray(payment_pattern, dtype=float)
         if np.any(pattern < 0) or pattern.sum() <= 0:
             raise ValueError("payment_pattern must be non-negative with a positive total")
         if n_years < 2 or claims_per_year <= 0 or mean_claim <= 0 or claim_cv <= 0:
             raise ValueError("n_years must be at least 2 and the claim parameters positive")
+        if pattern_concentration is not None and pattern_concentration <= 0:
+            raise ValueError("pattern_concentration must be positive")
+        self.pattern_concentration = pattern_concentration
         self.n_years = int(n_years)
         self.first_year = int(first_year)
         self.claims_per_year = float(claims_per_year)
@@ -128,9 +138,17 @@ class ClaimsSimulator:
             pattern = self.payment_pattern
             if self._speed_change and year >= self._speed_change[0]:
                 pattern = self._speed_change[1]
-            for size in sizes:
+            paid_from = np.flatnonzero(np.asarray(pattern) > 0)
+            if self.pattern_concentration is not None:
+                drawn = rng.dirichlet(np.asarray(pattern)[paid_from] * self.pattern_concentration
+                                      / np.sum(pattern), count)
+            for number, size in enumerate(sizes):
                 claim_id += 1
-                for dev, share in enumerate(pattern):
+                shares = pattern
+                if self.pattern_concentration is not None:
+                    shares = np.zeros(len(pattern))
+                    shares[paid_from] = drawn[number]
+                for dev, share in enumerate(shares):
                     if share == 0:
                         continue
                     paid_in = year + dev
