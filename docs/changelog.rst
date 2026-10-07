@@ -55,6 +55,18 @@ Added
     profit signature, net present value, internal rate of return and profit margin
 
   These reproduce published answers worked on AM92
+* Reserving diagnostics (``actuneo.loss_reserving.diagnostics``): Mack's calendar year
+  effect and development factor correlation tests, an intercept test, a test for trends in
+  link ratios, outlying link ratios, ``backtest`` of the latest diagonals, and ``diagnose``
+  to run them all
+* ``GLMReserving``: over-dispersed Poisson model with an analytic prediction error; with
+  ``structure="calendar"`` it estimates calendar year inflation from the triangle
+* ``MLChainLadder``: chain-ladder factors adjusted by a scikit-learn model, for experiments
+* ``benchmark_reserving``: compare reserving methods with the true outcome on simulated
+  triangles; ``ClaimsSimulator(pattern_concentration=...)`` lets each claim be paid in its
+  own proportions
+* ``actuneo.zimbabwe.minimum_capital``: minimum capital by class of insurer as reported for
+  SI 67 of 2025
 * Reserving: one-year reserve risk (``MackChainLadder.cdr``, Merz and Wuthrich 2008),
   ``MunichChainLadder`` for paid and incurred triangles together, and triangles with
   missing cells (``allow_missing=True``)

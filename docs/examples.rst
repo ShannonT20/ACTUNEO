@@ -120,7 +120,7 @@ Example 5: Bond Duration and Convexity
    print(f"Estimated price change for +1% yield: {change:.2f}")
 
 Example 6: Chain-Ladder Reserve with Mack's Standard Error
-----------------------------------------------------------
+-----------------------------------------------------------
 
 The Taylor and Ashe triangle, as analysed in Mack (1993) and England and
 Verrall (2002).
@@ -140,6 +140,42 @@ Verrall (2002).
    print(f"Process risk:    {mack.total_process_risk:,.0f}")
    print(f"Parameter risk:  {mack.total_parameter_risk:,.0f}")
    print(f"Standard error:  {mack.total_mack_se:,.0f}")
+
+Example 7: Checking Whether the Chain-Ladder Can Be Trusted
+-----------------------------------------------------------
+
+Simulate a portfolio in which claims inflation jumps from 3% to 40% in the
+last two calendar years, run the diagnostic tests on the triangle, and
+compare the chain-ladder with a model that has calendar year effects. The
+simulator knows what the claims finally cost, so the error of each method
+can be measured.
+
+.. code-block:: python
+
+   from actuneo.loss_reserving import ChainLadder, GLMReserving, diagnose
+   from actuneo.simulation import ClaimsSimulator, benchmark_reserving
+
+   portfolio = ClaimsSimulator(
+       n_years=10, first_year=2015, claims_per_year=400, claim_cv=1.0,
+       inflation=0.03, pattern_concentration=3, seed=1,
+   ).with_inflation_shock(2022, 0.40)
+
+   triangle = portfolio.triangle()
+   report = diagnose(triangle)
+   print(report[["flag", "finding"]])
+
+   calendar = GLMReserving(triangle, structure="calendar", trend_periods=2)
+   print(calendar.calendar_inflation.round(2))
+
+   methods = {
+       "Chain-ladder": ChainLadder,
+       "Calendar GLM": lambda t: GLMReserving(t, structure="calendar", trend_periods=2),
+   }
+   print(benchmark_reserving(portfolio, methods, n_simulations=10).round(3))
+
+The calendar model does better here because it is told, in effect, that
+recent inflation will continue. If inflation fell back, it would overstate
+the reserve. The benchmark describes the simulated portfolio only.
 
 References
 ----------

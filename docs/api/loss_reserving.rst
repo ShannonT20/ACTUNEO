@@ -79,6 +79,43 @@ BootChainLadder
    :members:
    :special-members: __init__
 
+Diagnostics: when the chain-ladder fails
+----------------------------------------
+
+.. automodule:: actuneo.loss_reserving.diagnostics
+
+.. autofunction:: actuneo.loss_reserving.diagnose
+
+.. autofunction:: actuneo.loss_reserving.calendar_year_effect_test
+
+.. autofunction:: actuneo.loss_reserving.development_factor_correlation_test
+
+.. autofunction:: actuneo.loss_reserving.intercept_test
+
+.. autofunction:: actuneo.loss_reserving.link_ratio_trend_test
+
+.. autofunction:: actuneo.loss_reserving.link_ratio_outliers
+
+.. autofunction:: actuneo.loss_reserving.backtest
+
+GLMReserving
+------------
+
+.. automodule:: actuneo.loss_reserving.glm
+
+.. autoclass:: actuneo.loss_reserving.GLMReserving
+   :members:
+   :special-members: __init__
+
+MLChainLadder
+-------------
+
+.. automodule:: actuneo.loss_reserving.ml
+
+.. autoclass:: actuneo.loss_reserving.MLChainLadder
+   :members:
+   :special-members: __init__
+
 Reports and Files
 -----------------
 

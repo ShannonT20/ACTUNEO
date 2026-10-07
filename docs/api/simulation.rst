@@ -22,6 +22,11 @@ Claims Simulator
    :members:
    :special-members: __init__
 
+Benchmark of Reserving Methods
+------------------------------
+
+.. autofunction:: actuneo.simulation.benchmark_reserving
+
 Planned Features
 ----------------
 

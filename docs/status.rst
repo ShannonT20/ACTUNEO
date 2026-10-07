@@ -102,12 +102,30 @@ What is implemented
      - The correlation parameters match those published for Quarg and
        Mack's data. The projected ultimates were not checked against a
        published table
+   * - Reserving diagnostics
+     - Mack's calendar year and correlation tests; intercept, trend and
+       outlier checks; back-test of the latest diagonals
+     - Mack's two tests: published figures for the RAA triangle, as printed
+       by the R ChainLadder package. The other checks: hand calculation and
+       behaviour on simulated triangles
+   * - GLM reserving
+     - Over-dispersed Poisson model with origin or calendar effects and an
+       analytic prediction error
+     - Published figures for the Taylor/Ashe data (England and Verrall
+       2002): scale parameter, reserves and prediction errors by year and
+       in total, to within 0.002%. Calendar structure: recovers the
+       inflation built into simulated data; no published result reproduced
+   * - Machine learning reserving
+     - Chain-ladder factors adjusted by a scikit-learn model
+     - Identity only (no adjustment gives the chain-ladder) and behaviour
+       on simulated triangles. Experimental
    * - Other reserving tools
      - Cape Cod, tail factors, cash flows, discounting, quantiles,
        triangles from claim listings, missing cells, Excel output, plots
      - Hand calculation and identities. Plots: runs without error only
    * - Simulation
-     - Aggregate claims; simulated claim payments and triangles
+     - Aggregate claims; simulated claim payments and triangles; benchmark
+       of reserving methods against the simulated outcome
      - Simulated moments against their theoretical values. The claims
        simulator is a simple model of reality, not a calibrated one
    * - Macro data
@@ -210,7 +228,30 @@ Loss reserving
 * Reserve quantiles from Mack's model assume a lognormal or normal shape.
 * The bootstrap follows the R approach of resampling all residuals. It has
   no tail factor and does not handle negative development well.
-* Generalised linear models for reserving are not implemented.
+* ``GLMReserving`` fits the over-dispersed Poisson model only, with origin
+  and development effects or development and calendar effects. There are no
+  other distributions, no smoothing of the effects and no user-defined
+  model formula. It cannot be fitted when a development period has negative
+  total incremental claims. Under the calendar structure the prediction
+  error ignores the uncertainty of future inflation, which is usually the
+  largest uncertainty of all, and all origin periods are assumed to have
+  the same volume unless an exposure is given.
+* The diagnostic tests have little power on a triangle of ordinary size and
+  they also raise false alarms. On simulated ten-year triangles with nothing
+  wrong, individual checks in ``diagnose`` flagged between 1% and 18% of
+  triangles and at least one check flagged about a third. A clean report
+  does not show that the chain-ladder is appropriate, and a flag is a
+  reason to look, not a finding. The intercept, trend and outlier checks
+  are this library's own choices of test, not published procedures.
+* ``MLChainLadder`` is an experiment. It has no measure of uncertainty, no
+  tail factor and no published result to check against. On the Taylor and
+  Ashe triangle its default model gives a reserve 18% above the
+  chain-ladder, and on the RAA triangle 38% above, without any evidence
+  that it is nearer the truth. A more flexible model (gradient boosting)
+  more than doubled the Taylor and Ashe reserve. See the benchmark below.
+* No reserving method here uses individual claims data, case estimates
+  together with payments (other than Munich), or claim counts in a
+  machine learning model.
 * The one-year reserve risk formula does not allow for a tail factor.
 * The Munich chain ladder fills the parameter of the last development step
   by a log-linear trend, and has no standard errors.
@@ -266,10 +307,18 @@ Zimbabwe-specific content
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * The Zimbabwean content is limited to the 2023 mortality tables, the April
-  2024 ZWL to ZiG conversion rate, and notes on how local rules affect
-  IFRS 17 (for example SI 81 of 2023).
+  2024 ZWL to ZiG conversion rate, minimum capital figures as reported for
+  SI 67 of 2025, and notes on how local rules affect IFRS 17 (for example
+  SI 81 of 2023).
+* The minimum capital figures were taken from published summaries of the
+  instrument (a law firm's article), not from the gazetted text.
 * No IPEC return templates, ZICARP capital calculations, tax rules or local
-  price indices are included.
+  price indices are included. The risk-based solvency rules reported for
+  SI 44 of 2026 (best estimate plus risk margin, a solvency capital
+  requirement at 99.5% over one year, a minimum capital requirement, own
+  funds in tiers, an own risk and solvency assessment) are not implemented
+  in any form: the standard formula and its calibration were not available
+  to build from.
 * The notes on local practice come from public sources found online. No
   IPEC guideline on IFRS 17 was located, and the practice of individual
   Zimbabwean insurers has not been verified.
@@ -283,10 +332,48 @@ Excel report writer.
 Simulation and macro data
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* The claims simulator pays every claim in fixed proportions over the
-  development years, with no reporting delay, case estimates or reopened
-  claims. It is a test bed for reserving methods, not a model of a real
-  portfolio.
+* The claims simulator pays every claim over the development years in
+  fixed proportions, or in proportions that vary at random from claim to
+  claim, with no reporting delay, case estimates or reopened claims. It is
+  a test bed for reserving methods, not a model of a real portfolio.
+* ``benchmark_reserving`` ranks methods on the simulated portfolio only. In
+  the runs made while building it (100 ten-year triangles of about 400
+  claims a year), the error of the total reserve was:
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 34 22 22 22
+
+     * - Method (bias / root mean squared error)
+       - Nothing wrong
+       - Faster settlement from year 7
+       - Inflation 3% to 40% in the last two years
+     * - Chain-ladder
+       - +1% / 6%
+       - +183% / 184%
+       - -44% / 44%
+     * - Chain-ladder, latest three years
+       - 0% / 6%
+       - +138% / 139%
+       - -26% / 26%
+     * - GLM, calendar effects, all years
+       - +1% / 7%
+       - +141% / 142%
+       - -41% / 42%
+     * - GLM, calendar effects, last two years
+       - +1% / 11%
+       - +100% / 102%
+       - +2% / 13%
+     * - ML chain-ladder (default)
+       - +1% / 10%
+       - -34% / 37%
+       - -1% / 10%
+
+  No method was best throughout: the methods that cope with a change cost
+  accuracy when nothing has changed, and none handled faster settlement
+  well. These figures come from one simple simulator with large, abrupt
+  changes and should not be read as the performance to expect on real
+  business.
 * Macro data comes only from the World Bank's annual indicators. Recent
   years are often missing, and for countries with very high inflation or
   several exchange rates the official series may not reflect the rates
