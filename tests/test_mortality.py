@@ -153,6 +153,57 @@ class TestZimbabwe2023Tables:
             MortalityTable.from_zimbabwe_2023("no_such_table")
 
 
+class TestSouthAfricaTables:
+    """The South African ASSA tables shipped with the package."""
+
+    @pytest.mark.parametrize("name", MortalityTable.south_africa_tables())
+    def test_tables_load(self, name):
+        mt = MortalityTable.from_south_africa(name)
+        assert mt.metadata["country"] == "South Africa"
+        assert len(mt) > 0
+        assert (mt.qx_values > 0).all()
+        assert (mt.qx_values < 1).all()
+
+    def test_five_tables(self):
+        assert len(MortalityTable.south_africa_tables()) == 5
+
+    def test_unknown_table(self):
+        with pytest.raises(ValueError, match="Unknown South Africa table"):
+            MortalityTable.from_south_africa("no_such_table")
+
+    def test_sa8590_age_range(self):
+        mt = MortalityTable.from_south_africa("sa8590")
+        assert mt.min_age == 15
+        assert mt.max_age == 104
+
+    def test_pensioner_age_range(self):
+        mt = MortalityTable.from_south_africa("pensioner_2005_2010_male")
+        assert mt.min_age == 50
+        assert mt.max_age == 110
+
+    def test_light_below_standard_below_heavy(self):
+        light = MortalityTable.from_south_africa("sa8590_light")
+        std = MortalityTable.from_south_africa("sa8590")
+        heavy = MortalityTable.from_south_africa("sa8590_heavy")
+        for age in [20, 40, 60]:
+            assert light.qx(age) < std.qx(age) < heavy.qx(age), (
+                f"Light < Standard < Heavy violated at age {age}"
+            )
+
+    def test_pensioner_female_lighter_than_male(self):
+        male = MortalityTable.from_south_africa("pensioner_2005_2010_male")
+        female = MortalityTable.from_south_africa("pensioner_2005_2010_female")
+        for age in [60, 70, 80]:
+            assert female.qx(age) < male.qx(age), (
+                f"Female pensioner heavier than male at age {age}"
+            )
+
+    def test_sa8590_published_value_age_40(self):
+        # Spot-check against value taken directly from the ASSA XLS
+        mt = MortalityTable.from_south_africa("sa8590")
+        np.testing.assert_allclose(mt.qx(40), 0.00286, atol=1e-5)
+
+
 class TestSurvivalFunctions:
     """Test cases for SurvivalFunctions class."""
 

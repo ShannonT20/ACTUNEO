@@ -23,6 +23,14 @@ from typing import Union, Dict, List, Optional
 
 _PUBLISHED_COLUMNS = ["mx", "px", "lx", "dx", "Lx", "Tx", "ex"]
 
+_SOUTH_AFRICA_TABLES = {
+    "sa8590": "sa8590.csv",
+    "sa8590_light": "sa8590_light.csv",
+    "sa8590_heavy": "sa8590_heavy.csv",
+    "pensioner_2005_2010_male": "sa_pensioner_0510_male.csv",
+    "pensioner_2005_2010_female": "sa_pensioner_0510_female.csv",
+}
+
 _ZIMBABWE_2023_TABLES = {
     "male_assured_lives": "a_male_assured_lives_a_life_table.csv",
     "group_life_male": "c_group_life_assurance_male_and_female_a_male_life_table.csv",
@@ -299,6 +307,52 @@ class MortalityTable:
                 qx_col="qx",
                 name=f"Zimbabwe 2023 - {table}",
                 metadata={"country": "Zimbabwe", "year": 2023, "table": table},
+            )
+
+    @staticmethod
+    def south_africa_tables() -> List[str]:
+        """Names accepted by :meth:`from_south_africa`."""
+        return sorted(_SOUTH_AFRICA_TABLES)
+
+    @classmethod
+    def from_south_africa(cls, table: str) -> 'MortalityTable':
+        """
+        Load one of the South African mortality tables shipped with ACTUNEO.
+
+        Available tables:
+
+        - ``sa8590``: SA 85-90 Assured Lives (standard aggregate)
+        - ``sa8590_light``: SA 85-90 Assured Lives (light underwriting class)
+        - ``sa8590_heavy``: SA 85-90 Assured Lives (heavy underwriting class)
+        - ``pensioner_2005_2010_male``: SA Pensioner Investigation 2005-10, males
+        - ``pensioner_2005_2010_female``: SA Pensioner Investigation 2005-10, females
+
+        Source: Actuarial Society of South Africa (ASSA), Continuous Surveys
+        Investigation (CSI). Tables downloaded from the ASSA website
+        (actuarialsociety.org.za). See the Status and Limitations page for the
+        provenance of each table.
+
+        Args:
+            table: Table name, see :meth:`south_africa_tables`
+
+        Returns:
+            MortalityTable instance
+        """
+        table = table.strip().lower()
+        if table not in _SOUTH_AFRICA_TABLES:
+            raise ValueError(
+                f"Unknown South Africa table '{table}'. Available: {sorted(_SOUTH_AFRICA_TABLES)}"
+            )
+        csv_rel = f"data/south_africa/{_SOUTH_AFRICA_TABLES[table]}"
+        csv_path = resources.files("actuneo.mortality") / csv_rel
+        with resources.as_file(csv_path) as p:
+            return cls.from_csv(
+                str(p),
+                age_col="age",
+                qx_col="qx",
+                name=f"SA - {table}",
+                metadata={"country": "South Africa", "table": table,
+                          "source": "ASSA CSI"},
             )
 
     def to_dataframe(self) -> pd.DataFrame:

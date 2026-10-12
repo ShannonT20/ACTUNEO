@@ -3,6 +3,19 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
+Version 0.4.1 (2026-10-12)
+--------------------------
+
+Added
+~~~~~
+
+* South African ASSA mortality tables (``MortalityTable.from_south_africa``):
+
+  * SA85-90 Assured Lives in three variants: standard, light (lighter risk class), and
+    heavy (heavier risk class), ages 15-104. Sourced from the ASSA CSI investigation.
+  * SA Pensioner 2005-10, male and female, ages 50-110. Sourced from the ASSA CSI
+    pensioner investigation.
+
 Version 0.4.0 (2026-10-07)
 --------------------------
 
