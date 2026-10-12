@@ -49,13 +49,14 @@ What is implemented
    * - Mortality tables
      - Life table columns from ``qx``, survival probabilities, life
        expectancy, select mortality, ten Zimbabwe 2023 tables, AM92,
-       and five South African ASSA tables (SA85-90 in three variants,
-       SA Pensioner 2005-10 male and female)
+       and seven South African ASSA tables (SA85-90 in three variants,
+       SA Pensioner 2005-10 male and female, SAIML98 and SAIFL98
+       annuitant standard tables)
      - Hand calculation. The Zimbabwe tables agree with the columns in
        their source files. AM92 agrees with its graduation formula and
        reproduces published annuity and assurance values. The SA tables
-       are loaded directly from the ASSA source files with spot checks
-       against the published figures
+       are loaded directly from the ASSA source files or digitised from
+       the published paper, with spot checks against published figures
    * - Life contingencies
      - Assurances, annuities, net premiums, net premium reserves,
        commutation functions, two-life functions assuming independence
@@ -172,12 +173,15 @@ Mortality and life
   not included, so questions that need them cannot be reproduced.
 * The South African ASSA tables cover three investigation periods:
   SA85-90 (assured lives, 1985-90, ages 15-104, three risk variants),
-  and SA Pensioner 2005-10 (ages 50-110, male and female). The SA85-90
-  table is an aggregate table with no select effect; the three variants
-  (standard, light, heavy) represent different underwriting risk classes.
-  Neither set is suitable for other African countries without adjustment.
-  The investigation periods are 15-40 years old. No more recent ASSA
-  assured lives tables are publicly available at the time of writing.
+  SA Pensioner 2005-10 (ages 50-110, male and female), and SAIML98 /
+  SAIFL98 individual annuitant tables 1996-2000 (ages 40-110, digitised
+  from Dorrington & Tootla 2007). The SA85-90 is an aggregate table with
+  no select period effect; the three variants (standard, light, heavy)
+  represent different underwriting risk classes. None of these is suitable
+  for other African countries without adjustment. The investigation periods
+  are 15-40 years old. The 1991-94, 1995-98, and 1999-2002 ASSA XLS
+  files are A/E investigation reports (actual vs. expected ratios against
+  SA85-90), not graduated tables, and have not been encoded.
 * The Zimbabwe 2023 data shipped has gaps: there is no female assured-lives
   table, group life and pre-retirement pension tables stop at age 70,
   post-retirement tables start at age 76 (ages 71 to 75 are missing for

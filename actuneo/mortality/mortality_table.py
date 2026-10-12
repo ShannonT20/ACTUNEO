@@ -29,6 +29,8 @@ _SOUTH_AFRICA_TABLES = {
     "sa8590_heavy": "sa8590_heavy.csv",
     "pensioner_2005_2010_male": "sa_pensioner_0510_male.csv",
     "pensioner_2005_2010_female": "sa_pensioner_0510_female.csv",
+    "saiml98": "saiml98_saifl98_male.csv",
+    "saifl98": "saiml98_saifl98_female.csv",
 }
 
 _ZIMBABWE_2023_TABLES = {
@@ -321,16 +323,20 @@ class MortalityTable:
 
         Available tables:
 
-        - ``sa8590``: SA 85-90 Assured Lives (standard aggregate)
+        - ``sa8590``: SA 85-90 Assured Lives (standard aggregate), ages 15-104
         - ``sa8590_light``: SA 85-90 Assured Lives (light underwriting class)
         - ``sa8590_heavy``: SA 85-90 Assured Lives (heavy underwriting class)
         - ``pensioner_2005_2010_male``: SA Pensioner Investigation 2005-10, males
         - ``pensioner_2005_2010_female``: SA Pensioner Investigation 2005-10, females
+        - ``saiml98``: SA Individual Male Lives annuitant standard table 1996-2000,
+          ages 40-110
+        - ``saifl98``: SA Individual Female Lives annuitant standard table 1996-2000,
+          ages 40-110
 
-        Source: Actuarial Society of South Africa (ASSA), Continuous Surveys
-        Investigation (CSI). Tables downloaded from the ASSA website
-        (actuarialsociety.org.za). See the Status and Limitations page for the
-        provenance of each table.
+        Sources: SA85-90 and Pensioner tables from the ASSA CSI XLS files on the
+        ASSA website. SAIML98/SAIFL98 digitised from Dorrington & Tootla (2007),
+        *South African Annuitant Standard Mortality Tables 1996-2000*, SAAJ 7, 161-84.
+        See the Status and Limitations page for the provenance of each table.
 
         Args:
             table: Table name, see :meth:`south_africa_tables`

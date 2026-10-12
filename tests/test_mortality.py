@@ -164,8 +164,8 @@ class TestSouthAfricaTables:
         assert (mt.qx_values > 0).all()
         assert (mt.qx_values < 1).all()
 
-    def test_five_tables(self):
-        assert len(MortalityTable.south_africa_tables()) == 5
+    def test_seven_tables(self):
+        assert len(MortalityTable.south_africa_tables()) == 7
 
     def test_unknown_table(self):
         with pytest.raises(ValueError, match="Unknown South Africa table"):
@@ -202,6 +202,26 @@ class TestSouthAfricaTables:
         # Spot-check against value taken directly from the ASSA XLS
         mt = MortalityTable.from_south_africa("sa8590")
         np.testing.assert_allclose(mt.qx(40), 0.00286, atol=1e-5)
+
+    def test_annuitant_age_range(self):
+        for key in ["saiml98", "saifl98"]:
+            mt = MortalityTable.from_south_africa(key)
+            assert mt.min_age == 40
+            assert mt.max_age == 110
+
+    def test_annuitant_female_lighter_than_male(self):
+        # SAIML98/SAIFL98: female mortality materially lower than male
+        male = MortalityTable.from_south_africa("saiml98")
+        female = MortalityTable.from_south_africa("saifl98")
+        for age in [50, 65, 80]:
+            assert female.qx(age) < male.qx(age), (
+                f"SAIFL98 heavier than SAIML98 at age {age}"
+            )
+
+    def test_saiml98_published_value_age_65(self):
+        # Digitised from Dorrington & Tootla (2007), SAAJ 7, p182
+        mt = MortalityTable.from_south_africa("saiml98")
+        np.testing.assert_allclose(mt.qx(65), 0.02340, atol=1e-5)
 
 
 class TestSurvivalFunctions:
