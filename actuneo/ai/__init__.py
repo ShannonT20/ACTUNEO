@@ -28,8 +28,10 @@ from .backends import (
     OllamaBackend,
     OpenAIBackend,
     ToolCall,
+    shortlist_tools,
     tool_choice_schema,
 )
+from .benchmark import benchmark
 from .catalog import ModelSpec, load_catalog
 from .hardware import GPUInfo, HardwareProfile, detect_hardware
 from .setup import (
@@ -64,6 +66,8 @@ __all__ = [
     'OllamaBackend',
     'ToolCall',
     'tool_choice_schema',
+    'shortlist_tools',
+    'benchmark',
     'SetupError',
     'BackendError',
 ]

@@ -25,6 +25,8 @@ Tools are described the way most providers do it::
 import json
 import logging
 import os
+import re
+from collections import OrderedDict
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -145,6 +147,59 @@ def _tool_prompt(tools: Sequence[Dict[str, Any]], allow_none: bool) -> str:
     return "\n".join(lines)
 
 
+_WORD = re.compile(r"[a-z0-9]+")
+_STOP_WORDS = frozenset(
+    "a an and at by for from given how in is it of on or the to what with using use my me i "
+    "can you please value values calculate compute find get".split())
+_THINK = re.compile(r"<think>.*?</think>\s*", flags=re.S)
+
+
+def _words(text: str) -> List[str]:
+    words = []
+    for word in _WORD.findall(text.lower().replace("_", " ")):
+        if word in _STOP_WORDS:
+            continue
+        words.append(word[:-1] if len(word) > 3 and word.endswith("s") else word)
+    return words
+
+
+def shortlist_tools(prompt: str, tools: Sequence[Dict[str, Any]],
+                    limit: int = 5) -> List[Dict[str, Any]]:
+    """
+    The tools most relevant to a request, so that only those are put in
+    front of the model. Reading a long list of tools is the slowest part of
+    a tool call on a processor.
+
+    Relevance is a count of the words the request shares with each tool's
+    name and description, the name counting double. It is a plain word
+    match, not a search by meaning: a request phrased in words the tools do
+    not use can miss the right one, so keep ``limit`` generous or describe
+    tools in the words users use.
+
+    Args:
+        prompt: The user's request
+        tools: All the tools
+        limit: How many to keep
+
+    Returns:
+        Up to ``limit`` tools, most relevant first. If the request shares no
+        word with any tool, the first ``limit`` tools in their given order.
+    """
+    tools = normalise_tools(tools)
+    if limit <= 0:
+        raise ValueError("limit must be positive")
+    if len(tools) <= limit:
+        return tools
+    asked = set(_words(prompt))
+    scored = []
+    for position, tool in enumerate(tools):
+        score = (2 * len(asked & set(_words(tool["name"])))
+                 + len(asked & set(_words(tool["description"]))))
+        scored.append((-score, position, tool))
+    scored.sort(key=lambda item: item[:2])
+    return [tool for _, _, tool in scored[:limit]]
+
+
 def selection_schema(tools: Sequence[Dict[str, Any]], allow_none: bool = True) -> Dict[str, Any]:
     """JSON schema of the first step of a local tool call: which function, or none."""
     names = [tool["name"] for tool in normalise_tools(tools)]
@@ -223,21 +278,54 @@ class LocalBackend(Backend):
     name = "local"
 
     def __init__(self, model_path: str, n_gpu_layers: int = 0, n_ctx: int = 4096,
-                 n_threads: Optional[int] = None, verbose: bool = False):
+                 n_threads: Optional[int] = None, verbose: bool = False,
+                 no_think: bool = False, max_tools: int = 5, cache_size: int = 128):
         """
         Args:
             model_path: Path of the GGUF file
             n_gpu_layers: Layers to run on the GPU: 0 for none, -1 for all
-            n_ctx: Context window in tokens
-            n_threads: Processor threads (chosen by llama.cpp if omitted)
+            n_ctx: Context window in tokens. A small window keeps memory
+                use and start-up time down; 2,000 to 4,000 is plenty for
+                tool calls.
+            n_threads: Processor threads. Use the number of physical cores,
+                not hyperthreads (chosen by llama.cpp if omitted).
             verbose: Print llama.cpp's own log
+            no_think: Add Qwen3's ``/no_think`` switch to every prompt, so
+                the model answers without first writing out its reasoning.
+                Reasoning is what makes a processor painfully slow.
+            max_tools: Most tools put in front of the model in
+                ``call_tools``; the rest are dropped by
+                :func:`shortlist_tools`
+            cache_size: Number of recent answers remembered, so a repeated
+                question is answered at once (0 to turn off)
         """
         self.model_path = str(model_path)
         self.n_gpu_layers = int(n_gpu_layers)
         self.n_ctx = int(n_ctx)
         self.n_threads = n_threads
         self.verbose = verbose
+        self.no_think = bool(no_think)
+        self.max_tools = int(max_tools)
+        self.cache_size = int(cache_size)
+        self._cache: "OrderedDict[str, Any]" = OrderedDict()
         self._llm = None
+
+    def clear_cache(self) -> None:
+        """Forget the remembered answers."""
+        self._cache.clear()
+
+    def _remembered(self, key: str, compute):
+        """The remembered answer for a key, or a fresh one that is then remembered."""
+        if self.cache_size <= 0:
+            return compute()
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        value = compute()
+        self._cache[key] = value
+        while len(self._cache) > self.cache_size:
+            self._cache.popitem(last=False)
+        return value
 
     def _model(self):
         if self._llm is None:
@@ -265,25 +353,28 @@ class LocalBackend(Backend):
         messages.append({"role": "user", "content": prompt})
         return messages
 
+    def _chat(self, prompt: str, system: Optional[str], **options) -> str:
+        """One exchange with the model, with thinking switched off if asked."""
+        if self.no_think:
+            prompt = f"{prompt} /no_think"
+        result = self._model().create_chat_completion(
+            messages=self._messages(prompt, system), **options)
+        text = result["choices"][0]["message"].get("content") or ""
+        return _THINK.sub("", text).strip()
+
     def generate(self, prompt: str, system: Optional[str] = None,
                  max_tokens: Optional[int] = None, temperature: float = 0.2) -> str:
-        result = self._model().create_chat_completion(
-            messages=self._messages(prompt, system),
-            max_tokens=max_tokens or 1024, temperature=temperature,
-        )
-        return (result["choices"][0]["message"].get("content") or "").strip()
+        key = json.dumps(["generate", prompt, system, max_tokens, temperature])
+        return self._remembered(key, lambda: self._chat(
+            prompt, system, max_tokens=max_tokens or 1024, temperature=temperature))
 
     def _constrained(self, prompt: str, instructions: str, schema: Dict[str, Any],
                      system: Optional[str], max_tokens: int) -> Dict[str, Any]:
         """Ask for JSON that must satisfy a schema."""
         if system:
             instructions = system + "\n\n" + instructions
-        result = self._model().create_chat_completion(
-            messages=self._messages(prompt, instructions),
-            response_format={"type": "json_object", "schema": schema},
-            max_tokens=max_tokens, temperature=0.0,
-        )
-        text = result["choices"][0]["message"].get("content") or ""
+        text = self._chat(prompt, instructions, max_tokens=max_tokens, temperature=0.0,
+                          response_format={"type": "json_object", "schema": schema})
         try:
             data = json.loads(text)
         except ValueError as error:
@@ -299,8 +390,18 @@ class LocalBackend(Backend):
         more reliably than one: first the function (or none) from a fixed
         list, then that function's arguments, held to its schema. When no
         function fits, the request is answered as ordinary text.
+
+        Only the ``max_tools`` most relevant tools are shown to the model
+        (see :func:`shortlist_tools`), and the model writes only a function
+        name and its arguments: a few dozen tokens.
         """
         tools = normalise_tools(tools)
+        key = json.dumps(["call_tools", prompt, system, allow_none, tools], sort_keys=True)
+        return self._remembered(key, lambda: self._choose(prompt, tools, system, allow_none))
+
+    def _choose(self, prompt: str, tools: List[Dict[str, Any]], system: Optional[str],
+                allow_none: bool) -> ToolCall:
+        tools = shortlist_tools(prompt, tools, self.max_tools)
         chosen = self._constrained(prompt, _selection_prompt(tools, allow_none),
                                    selection_schema(tools, allow_none), system, 40)
         name = chosen.get("function")

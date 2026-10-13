@@ -37,6 +37,7 @@ class HardwareProfile:
     system: str = ""
     machine: str = ""
     cpu_count: int = 1
+    cpu_physical: Optional[int] = None
     ram_total_gb: Optional[float] = None
     ram_available_gb: Optional[float] = None
     gpu: Optional[GPUInfo] = None
@@ -54,7 +55,7 @@ class HardwareProfile:
             if self.ram_available_gb is not None:
                 ram += f" ({self.ram_available_gb:.1f} GB free)"
             parts.append(ram)
-        parts.append(f"{self.cpu_count} CPU cores")
+        parts.append(f"{self.cpu_physical or self.cpu_count} CPU cores")
         if self.gpu is None:
             parts.append("no supported GPU")
         elif self.gpu.unified:
@@ -89,6 +90,16 @@ def _detect_memory() -> Tuple[Optional[float], Optional[float]]:
     except (ValueError, OSError) as error:
         logger.debug("sysconf memory detection failed: %s", error)
     return None, None
+
+
+def _physical_cores() -> Optional[int]:
+    """Physical processor cores, not counting hyperthreads."""
+    try:
+        import psutil
+        return psutil.cpu_count(logical=False)
+    except Exception as error:
+        logger.debug("physical core detection failed: %s", error)
+        return None
 
 
 def _detect_nvidia() -> Optional[GPUInfo]:
@@ -175,6 +186,7 @@ def detect_hardware(models_dir: Union[str, Path, None] = None) -> HardwareProfil
     """
     profile = HardwareProfile(system=platform.system(), machine=platform.machine(),
                               cpu_count=os.cpu_count() or 1)
+    profile.cpu_physical = _physical_cores()
     total, available = _detect_memory()
     profile.ram_total_gb = total
     profile.ram_available_gb = available

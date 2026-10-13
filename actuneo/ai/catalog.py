@@ -35,6 +35,9 @@ class ModelSpec:
     license: str = ""
     parameters: str = ""
     sha256: Optional[str] = None
+    role: str = "tier"          # "tier" is chosen automatically; "challenger" only by name
+    no_think: bool = False      # add Qwen3's /no_think switch to prompts
+    note: str = ""
 
     @property
     def size_gb(self) -> float:
@@ -75,6 +78,11 @@ def load_catalog(path: Union[str, Path, None] = None) -> List[ModelSpec]:
     keys = [model.key for model in models]
     if len(set(keys)) != len(keys):
         raise ValueError("catalog keys must be unique")
-    if not models:
-        raise ValueError("the catalog holds no models")
+    if not any(model.role == "tier" for model in models):
+        raise ValueError("the catalog holds no models with role 'tier'")
     return sorted(models, key=lambda model: model.size_bytes)
+
+
+def tiers(catalog: List[ModelSpec]) -> List[ModelSpec]:
+    """The models that are chosen between automatically."""
+    return [model for model in catalog if model.role == "tier"]

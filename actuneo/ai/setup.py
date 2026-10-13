@@ -21,7 +21,7 @@ system and Python, is within what is free:
 
 The download plus 1 GB must also fit on the disk. The recommended model is
 the largest that fits, except that a model which cannot sit wholly on a GPU
-is recommended only up to about 5 GB, because larger ones answer slowly on a
+is recommended only up to about 5.5 GB, because larger ones answer slowly on a
 processor. Those are still offered as the "largest" alternative.
 """
 
@@ -38,7 +38,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from . import backends as _backends
 from . import config as _config
 from .backends import PROVIDERS, Backend, BackendError, LocalBackend
-from .catalog import ModelSpec, load_catalog
+from .catalog import ModelSpec, load_catalog, tiers
 from .hardware import GIB, HardwareProfile, detect_hardware
 
 logger = logging.getLogger("actuneo.ai")
@@ -47,7 +47,7 @@ RAM_HEADROOM = 0.30
 VRAM_HEADROOM = 0.20
 RELAXED_HEADROOM = 0.10
 DISK_BUFFER_GB = 1.0
-CPU_COMFORT_SIZE_GB = 5.0
+CPU_COMFORT_SIZE_GB = 5.5
 LARGE_DOWNLOAD_GB = 3.0
 BUSY_MEMORY_SHARE = 0.4
 CONTEXT_TOKENS = 4096
@@ -161,7 +161,7 @@ def select_model(hardware: HardwareProfile,
         ``fallback`` is True when the hardware could not be measured and the
         smallest model was chosen for safety.
     """
-    catalog = catalog or load_catalog()
+    catalog = tiers(catalog or load_catalog())
     if not hardware.detection_ok:
         choice = Choice(catalog[0], "cpu", 0)
         return Selection(choice, choice, choice, fallback=True)
@@ -228,6 +228,8 @@ def render_summary(hardware: HardwareProfile, selection: Selection,
     details = [f"quality: {model.quality}" if model.quality else "",
                f"licence: {model.license}" if model.license else ""]
     lines.append("Details: " + ", ".join(d for d in details if d))
+    if model.note:
+        lines.append(f"Note: {model.note}")
     if models_dir is not None:
         lines.append(f"Stored in: {models_dir}")
     parts = []
@@ -419,9 +421,10 @@ def setup(auto: bool = False,
     Args:
         auto: Take the recommended model without asking
         model: Take a particular model without asking: a key from the
-            catalog ("tiny", "small", "medium", "large", "xlarge",
-            "xxlarge"), or "smallest", "recommended" or "largest" for this
-            machine, or "skip" to download nothing
+            catalog ("minimal", "tiny", "small", "default", "strong", "max",
+            or a challenger such as "phi4-mini"), or "smallest",
+            "recommended" or "largest" for this machine, or "skip" to
+            download nothing
         yes: Answer yes to the confirmation (takes the recommended model)
         force: Set up again even if a model is in place, and allow a named
             model that does not fit the machine
@@ -465,6 +468,9 @@ def setup(auto: bool = False,
         return {**status(quiet=True), "result": "skipped"}
 
     spec = choice.model
+    if spec.role != "tier":
+        _say(f"{spec.name} is a challenger model, offered for comparison."
+             + (f" {spec.note}" if spec.note else "") + f" Licence: {spec.license}.")
     _say(f"Downloading {spec.name} ({spec.size_gb:.1f} GB) from huggingface.co/{spec.repo}")
     path = download_model(spec, directory)
     saved["backend"] = "local"
@@ -474,6 +480,8 @@ def setup(auto: bool = False,
         "device": choice.device,
         "n_gpu_layers": choice.n_gpu_layers,
         "n_ctx": CONTEXT_TOKENS,
+        "n_threads": hardware.cpu_physical,
+        "no_think": spec.no_think,
         "hardware": hardware.to_dict(),
         "configured_at": datetime.datetime.now().isoformat(timespec="seconds"),
     }
@@ -668,8 +676,10 @@ def get_backend() -> Backend:
         if key not in _BACKEND_CACHE:
             if not local.get("path") or not Path(local["path"]).exists():
                 raise SetupError("The local model file is missing. Run actuneo.ai.setup().")
-            _BACKEND_CACHE[key] = LocalBackend(local["path"], local.get("n_gpu_layers", 0),
-                                               local.get("n_ctx", CONTEXT_TOKENS))
+            _BACKEND_CACHE[key] = LocalBackend(
+                local["path"], local.get("n_gpu_layers", 0),
+                local.get("n_ctx", CONTEXT_TOKENS), local.get("n_threads"),
+                no_think=bool(local.get("no_think", False)))
         return _BACKEND_CACHE[key]
     if kind == "api":
         api = saved["api"]

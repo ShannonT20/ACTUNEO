@@ -18,7 +18,7 @@ import pytest
 
 from actuneo import ai
 from actuneo.ai import backends
-from actuneo.ai.catalog import ModelSpec, load_catalog
+from actuneo.ai.catalog import ModelSpec, load_catalog, tiers
 from actuneo.ai.hardware import GPUInfo, HardwareProfile
 
 setup_mod = importlib.import_module("actuneo.ai.setup")
@@ -27,7 +27,7 @@ config_module = importlib.import_module("actuneo.ai.config")
 
 
 def profile(ram_total, ram_available, gpu=None, disk=200.0, ok=True):
-    return HardwareProfile(system="Test", machine="x86_64", cpu_count=8,
+    return HardwareProfile(system="Test", machine="x86_64", cpu_count=8, cpu_physical=4,
                            ram_total_gb=ram_total, ram_available_gb=ram_available,
                            gpu=gpu, disk_free_gb=disk, detection_ok=ok)
 
@@ -57,7 +57,6 @@ def isolated_home(tmp_path, monkeypatch):
 class TestCatalog:
     def test_shipped_catalog(self):
         catalog = load_catalog()
-        assert 4 <= len(catalog) <= 8
         sizes = [model.size_bytes for model in catalog]
         assert sizes == sorted(sizes)
         assert len({model.key for model in catalog}) == len(catalog)
@@ -67,11 +66,31 @@ class TestCatalog:
             assert model.min_ram_gb > model.size_gb * 0.9
             assert model.min_vram_gb <= model.min_ram_gb
             assert model.license and model.quality and model.layers > 0
-        assert catalog[0].size_gb < 1 and catalog[-1].size_gb > 8
+            assert model.role in ("tier", "challenger")
 
-    def test_no_non_commercial_models(self):
-        permissive = {"Apache-2.0", "MIT"}
-        assert {model.license for model in load_catalog()} <= permissive
+    def test_tiers_are_qwen3_with_thinking_off(self):
+        ladder = tiers(load_catalog())
+        assert [model.key for model in ladder] == ["minimal", "tiny", "small", "default",
+                                                   "strong", "max"]
+        assert [model.parameters for model in ladder][:5] == ["0.6B", "1.7B", "4B", "8B", "14B"]
+        for model in ladder:
+            assert model.name.startswith("Qwen3-") and model.no_think
+            assert model.license == "Apache-2.0"
+        assert ladder[0].size_gb < 0.5            # runs on a 4 GB machine
+        assert 4.9 < ladder[3].size_gb < 5.2      # the default, Qwen3 8B
+        assert "30B-A3B" in ladder[-1].name
+
+    def test_challengers_are_offered_but_never_chosen_automatically(self):
+        catalog = load_catalog()
+        challengers = {model.key: model for model in catalog if model.role == "challenger"}
+        assert set(challengers) == {"phi4-mini", "phi4-mini-reasoning", "gemma3-4b",
+                                    "deepseek-r1-14b"}
+        assert not any(model.no_think for model in challengers.values())
+        assert "Gemma" in challengers["gemma3-4b"].license and challengers["gemma3-4b"].note
+        for free in (2.0, 5.5, 10.0, 16.0, 40.0):
+            selection = ai.select_model(profile(64, free), catalog)
+            for choice in (selection.recommended, selection.smallest, selection.largest):
+                assert choice.model.role == "tier"
 
     def test_catalog_from_a_file(self, tmp_path, monkeypatch):
         entry = {"key": "mine", "name": "Mine", "repo": "me/mine", "filename": "mine.gguf",
@@ -96,6 +115,9 @@ class TestCatalog:
         path.write_text("[]")
         with pytest.raises(ValueError, match="no models"):
             load_catalog(path)
+        path.write_text(json.dumps([dict(entry, role="challenger")]))
+        with pytest.raises(ValueError, match="role 'tier'"):
+            load_catalog(path)
 
 
 class TestSelection:
@@ -108,37 +130,39 @@ class TestSelection:
         selection = self.choose(profile(2, 0.9))
         assert selection.too_weak and selection.recommended is None
 
-    def test_four_gigabyte_laptop(self):
+    def test_four_gigabyte_laptop_without_gpu(self):
         selection = self.choose(profile(4, 2.0))
-        assert selection.recommended.model.key == "tiny"
+        assert selection.recommended.model.key == "minimal"
         assert selection.recommended.device == "cpu"
         assert selection.recommended.n_gpu_layers == 0
-        assert selection.largest.model.key == "tiny"
+        # With a little more memory free it takes Qwen3 1.7B
+        assert self.choose(profile(4, 3.0)).recommended.model.key == "tiny"
 
     def test_eight_gigabyte_laptop(self):
         selection = self.choose(profile(8, 5.5))
-        assert selection.recommended.model.key == "medium"
-        assert selection.smallest.model.key == "tiny"
+        assert selection.recommended.model.key == "small"
+        assert selection.smallest.model.key == "minimal"
 
     def test_sixteen_gigabyte_laptop_without_gpu(self):
         selection = self.choose(profile(16, 10.0))
-        assert selection.recommended.model.key == "large"
+        assert selection.recommended.model.key == "default"       # Qwen3 8B on the processor
         assert selection.recommended.device == "cpu"
-        assert selection.largest.model.key == "large"
+        assert selection.recommended.comfortable
+        assert selection.largest.model.key == "default"
         # With more memory free the 14B model is offered as the largest,
         # but the recommendation stays at a size a processor handles well
         roomy = self.choose(profile(16, 13.0))
-        assert roomy.recommended.model.key == "large"
-        assert roomy.largest.model.key == "xlarge"
+        assert roomy.recommended.model.key == "default"
+        assert roomy.largest.model.key == "strong"
         assert not roomy.largest.comfortable
 
     def test_sixteen_gigabytes_with_a_four_gigabyte_card(self):
         selection = self.choose(profile(16, 10.0, nvidia("NVIDIA RTX 3050", 4.0, 3.8)))
         chosen = selection.recommended
-        assert chosen.model.key == "large"
+        assert chosen.model.key == "default"
         assert chosen.device == "gpu+cpu"
-        assert chosen.n_gpu_layers == int(28 * 3.8 * 0.8 / 5.6)
-        assert "of 28 layers" in chosen.runs_on()
+        assert chosen.n_gpu_layers == int(36 * 3.8 * 0.8 / 6.0)
+        assert "of 36 layers" in chosen.runs_on()
         # The model that fits wholly in video memory runs entirely on the card
         small = setup_mod.placement(load_catalog()[1], profile(
             16, 10.0, nvidia("NVIDIA RTX 3050", 4.0, 3.8)))
@@ -146,31 +170,32 @@ class TestSelection:
 
     def test_twenty_four_gigabyte_gpu(self):
         selection = self.choose(profile(64, 50.0, nvidia("NVIDIA RTX 4090", 24.0, 23.0)))
-        assert selection.recommended.model.key == "xlarge"
+        assert selection.recommended.model.key == "strong"
         assert selection.recommended.device == "gpu"
         assert selection.recommended.n_gpu_layers == -1
-        assert selection.largest.model.key == "xxlarge"
-        assert selection.largest.device == "gpu+cpu"
+        # The user can opt up to the most the card holds: Qwen3 30B-A3B
+        assert selection.largest.model.key == "max"
+        assert selection.largest.device == "gpu"
 
     def test_gpu_with_little_free_memory_is_not_overfilled(self):
         selection = self.choose(profile(64, 50.0, nvidia("NVIDIA RTX 4090", 24.0, 2.5)))
         on_gpu = setup_mod.placement(load_catalog()[1], profile(
             64, 50.0, nvidia("NVIDIA RTX 4090", 24.0, 2.5)))
         assert on_gpu.device == "gpu"            # 1.6 GB fits in 2.5 GB less 20%
-        assert selection.recommended.model.key == "large"
+        assert selection.recommended.model.key == "default"
         assert selection.recommended.device == "gpu+cpu"
 
     def test_apple_m1_with_eight_gigabytes(self):
         selection = self.choose(profile(8, 4.0, apple("Apple M1", 8.0, 4.0)))
-        assert selection.recommended.model.key == "small"
+        assert selection.recommended.model.key == "tiny"
         assert selection.recommended.device == "gpu"
         assert selection.recommended.n_gpu_layers == -1
 
     def test_apple_silicon_with_twenty_four_gigabytes(self):
         selection = self.choose(profile(24, 12.0, apple("Apple M3", 24.0, 12.0)))
-        assert selection.recommended.model.key == "large"
+        assert selection.recommended.model.key == "default"
         roomy = self.choose(profile(64, 40.0, apple("Apple M3 Max", 64.0, 40.0)))
-        assert roomy.recommended.model.key == "xxlarge"
+        assert roomy.recommended.model.key == "max"
 
     def test_headroom_is_respected(self):
         catalog = load_catalog()
@@ -182,7 +207,7 @@ class TestSelection:
 
     def test_low_disk_space_limits_the_choice(self):
         selection = self.choose(profile(16, 10.0, disk=2.0))
-        assert selection.recommended.model.key == "tiny"
+        assert selection.recommended.model.key == "minimal"
         full = self.choose(profile(16, 10.0, disk=1.2))
         assert full.too_weak and full.disk_limited
         text = setup_mod.render_summary(profile(16, 10.0, disk=1.2), full)
@@ -192,7 +217,7 @@ class TestSelection:
     def test_failed_detection_falls_back_to_the_smallest_model(self):
         selection = self.choose(profile(None, None, ok=False))
         assert selection.fallback and not selection.too_weak
-        assert selection.recommended.model.key == "tiny"
+        assert selection.recommended.model.key == "minimal"
         assert selection.recommended.device == "cpu"
 
     def test_summary_text(self):
@@ -200,13 +225,13 @@ class TestSelection:
         text = setup_mod.render_summary(hardware, self.choose(hardware), "/models")
         assert "Detected: 16 GB RAM (13.0 GB free)" in text
         assert "NVIDIA RTX 3050 (4 GB VRAM" in text and "120 GB free disk" in text
-        assert "Recommended model: Qwen2.5-7B-Instruct (Q4_K_M) - 4.7 GB download" in text
+        assert "Recommended model: Qwen3-8B (Q4_K_M) - 5.0 GB download" in text
         assert "largest model your machine can run comfortably" in text
-        assert "[1] Smallest (0.5 GB, fastest)" in text
-        assert "[2] Recommended (4.7 GB)" in text
+        assert "[1] Smallest (0.4 GB, fastest)" in text
+        assert "[2] Recommended (5.0 GB)" in text
         assert "[3] Largest your PC can handle (9.0 GB, may be slow)" in text
         assert "[s] Skip and use an API key instead" in text
-        assert "Warning: this is a large download (4.7 GB)" in text
+        assert "Warning: this is a large download (5.0 GB)" in text
         assert "metered connection" in text and "licence: Apache-2.0" in text
         assert "Tip:" not in text
         busy = profile(24, 5.1, apple("Apple M5", 24.0, 5.1))
@@ -217,7 +242,7 @@ class TestSelection:
         small = profile(4, 2.0)
         text = setup_mod.render_summary(small, self.choose(small))
         assert "Warning: this is a large download" not in text
-        assert "[1] Recommended (0.5 GB)" in text and "[2]" not in text
+        assert "[1] Recommended (0.4 GB)" in text and "[2]" not in text
         weak = profile(2, 0.9)
         text = setup_mod.render_summary(weak, self.choose(weak))
         assert "Colab" in text and "configure(provider=" in text
@@ -386,6 +411,7 @@ class TestSetup:
         saved = json.loads(config_module.config_path().read_text())
         assert saved["local"]["hardware"]["ram_total_gb"] == 16
         assert saved["local"]["n_gpu_layers"] == 0
+        assert saved["local"]["n_threads"] == 4 and saved["local"]["no_think"] is False
         assert str(isolated_home / "home") in saved["local"]["path"]
 
     def test_setup_runs_only_once(self, hub):
@@ -412,6 +438,23 @@ class TestSetup:
             ai.setup(model="large", hardware=weak)
         forced = ai.setup(model="large", force=True, hardware=weak)
         assert forced["local_model"]["key"] == "large"
+
+    def test_challenger_model_by_name(self, hub, monkeypatch, capsys):
+        challenger = ModelSpec(key="rival", name="Fake rival", repo="fake/small",
+                               filename="small.gguf", size_bytes=len(CONTENTS["small"]),
+                               sha256=hashlib.sha256(CONTENTS["small"]).hexdigest(),
+                               min_ram_gb=2.0, min_vram_gb=1.6, role="challenger",
+                               license="Other", note="Compare before use.")
+        thinker = ModelSpec(**{**fake_catalog()[0].to_dict(), "key": "quiet", "no_think": True})
+        monkeypatch.setattr(setup_mod, "load_catalog", lambda: sorted(
+            fake_catalog() + [challenger, thinker], key=lambda model: model.size_bytes))
+        assert ai.setup(auto=True, hardware=LAPTOP)["local_model"]["key"] == "large"
+        result = ai.setup(model="rival", hardware=LAPTOP)
+        assert result["local_model"]["key"] == "rival"
+        printed = " ".join(capsys.readouterr().out.split())
+        assert "challenger model" in printed and "Compare before use." in printed
+        ai.setup(model="quiet", hardware=LAPTOP)
+        assert json.loads(config_module.config_path().read_text())["local"]["no_think"] is True
 
     def test_skip(self, hub):
         result = ai.setup(model="skip", hardware=LAPTOP)
@@ -587,6 +630,77 @@ class TestTools:
                 backends.parse_tool_choice(bad, tools)
 
 
+class TestShortlist:
+    def test_ranking_by_shared_words(self):
+        from actuneo.ai.benchmark import TOOLS as MANY
+        top = ai.shortlist_tools("What is the price of a bond with a 6% coupon?", MANY, limit=3)
+        assert top[0]["name"] == "bond_price" and len(top) == 3
+        top = ai.shortlist_tools("life expectancy of a woman aged 40", MANY, limit=2)
+        assert top[0]["name"] == "life_expectancy"
+        top = ai.shortlist_tools("Mack standard error for the GenIns triangle", MANY, limit=3)
+        assert top[0]["name"] == "mack_standard_error"
+
+    def test_short_lists_and_no_match(self):
+        from actuneo.ai.benchmark import TOOLS as MANY
+        assert [t["name"] for t in ai.shortlist_tools("anything", TOOLS, limit=5)] == [
+            "life_expectancy", "annuity"]
+        unrelated = ai.shortlist_tools("xyzzy plugh", MANY, limit=4)
+        assert [t["name"] for t in unrelated] == [t["name"] for t in MANY[:4]]
+        with pytest.raises(ValueError, match="limit"):
+            ai.shortlist_tools("anything", MANY, limit=0)
+
+    def test_every_benchmark_request_keeps_its_function_in_the_top_five(self):
+        from actuneo.ai.benchmark import CASES, TOOLS as MANY
+        for request, expected, _ in CASES:
+            if expected is not None:
+                names = [t["name"] for t in ai.shortlist_tools(request, MANY, limit=5)]
+                assert expected in names, request
+
+
+class TestBenchmark:
+    def test_perfect_and_poor_backends(self, capsys):
+        from actuneo.ai import benchmark as run
+        from actuneo.ai.benchmark import CASES
+
+        answers = {request: (name, arguments) for request, name, arguments in CASES}
+
+        class Oracle(ai.Backend):
+            def generate(self, prompt, system=None, max_tokens=None, temperature=0.2):
+                return ""
+
+            def call_tools(self, prompt, tools, system=None, allow_none=True):
+                name, arguments = answers[prompt]
+                return ai.ToolCall(name, dict(arguments))
+
+        class AlwaysFirst(Oracle):
+            def call_tools(self, prompt, tools, system=None, allow_none=True):
+                if "bond" in prompt:
+                    raise ai.BackendError("broken")
+                return ai.ToolCall("life_expectancy", {"age": 40, "sex": "M"})
+
+        table = run(Oracle())
+        assert len(table) == len(CASES) == 20
+        assert table.attrs["summary"]["function_accuracy"] == 1.0
+        assert table.attrs["summary"]["argument_accuracy"] == 1.0
+        assert table.attrs["summary"]["none_accuracy"] == 1.0
+        assert "Function right: 100%" in capsys.readouterr().out
+
+        poor = run(AlwaysFirst(), verbose=False).attrs["summary"]
+        assert poor["function_accuracy"] == pytest.approx(2 / 20)
+        assert poor["argument_accuracy"] == pytest.approx(0 / 16)   # sex or age wrong each time
+        assert poor["none_accuracy"] == 0.0
+        assert capsys.readouterr().out == ""
+
+    def test_argument_matching(self):
+        from actuneo.ai.benchmark import arguments_match
+        assert arguments_match({"age": 40, "sex": "F"}, {"age": 40.0, "sex": " f ", "extra": 1})
+        assert arguments_match({"rate": 0.05}, {"rate": 0.05000000001})
+        assert not arguments_match({"rate": 0.05}, {"rate": 5})
+        assert not arguments_match({"age": 40}, {})
+        assert not arguments_match({"triangle": "RAA"}, {"triangle": 3})
+        assert not arguments_match({"age": 40}, {"age": "forty"})
+
+
 class FakeLlama:
     created = []
 
@@ -668,6 +782,52 @@ class TestLocalBackend:
             with pytest.raises(ai.BackendError, match=message):
                 backend.call_tools("Hello", TOOLS)
 
+    def test_thinking_is_switched_off_and_stripped(self, model_file):
+        backend = ai.LocalBackend(model_file, no_think=True)
+        backend._model().replies = ["<think>\nLet me see...\n</think>\n\nSixty.",
+                                    '{"function": "annuity"}', '{"age": 60, "rate": 0.05}']
+        assert backend.generate("Retirement age?", system="Brief.") == "Sixty."
+        backend.call_tools("Value an annuity at 60 and 5%", TOOLS)
+        for request in FakeLlama.created[0].requests:
+            assert request["messages"][-1]["content"].endswith(" /no_think")
+            assert "/no_think" not in request["messages"][0]["content"]
+        plain = ai.LocalBackend(model_file)
+        plain.generate("Retirement age?")
+        assert "/no_think" not in FakeLlama.created[1].requests[0]["messages"][-1]["content"]
+
+    def test_repeated_questions_are_answered_from_memory(self, model_file):
+        backend = ai.LocalBackend(model_file, cache_size=2)
+        llama = backend._model()
+        assert backend.generate("One?") == backend.generate("One?")
+        assert len(llama.requests) == 1
+        llama.replies = ['{"function": "annuity"}', '{"age": 60, "rate": 0.05}']
+        first = backend.call_tools("Value it", TOOLS)
+        assert backend.call_tools("Value it", TOOLS) is first
+        assert len(llama.requests) == 3
+        backend.generate("Three?")                      # pushes the oldest answer out
+        backend.generate("One?")
+        assert len(llama.requests) == 5
+        backend.clear_cache()
+        backend.generate("Three?")
+        assert len(llama.requests) == 6
+        forgetful = ai.LocalBackend(model_file, cache_size=0)
+        forgetful.generate("One?")
+        forgetful.generate("One?")
+        assert len(FakeLlama.created[1].requests) == 2
+
+    def test_only_the_relevant_tools_are_shown(self, model_file):
+        from actuneo.ai.benchmark import TOOLS as MANY
+        backend = ai.LocalBackend(model_file, max_tools=3)
+        backend._model().replies = ['{"function": "chain_ladder_reserve"}', '{"triangle": "RAA"}']
+        call = backend.call_tools("Chain ladder IBNR reserve for the RAA triangle", MANY)
+        assert call == ai.ToolCall("chain_ladder_reserve", {"triangle": "RAA"})
+        offered = FakeLlama.created[0].requests[0]["response_format"]["schema"][
+            "properties"]["function"]["enum"]
+        assert len(offered) == 4 and offered[0] == "chain_ladder_reserve"
+        assert offered[-1] == "none" and "bond_price" not in offered
+        listing = FakeLlama.created[0].requests[0]["messages"][0]["content"]
+        assert "bond_price" not in listing and "zwl_to_zig" not in listing
+
     def test_missing_file_and_missing_library(self, tmp_path, model_file, monkeypatch):
         with pytest.raises(ai.BackendError, match="model file not found"):
             ai.LocalBackend(tmp_path / "absent.gguf").generate("Hello")
@@ -680,6 +840,7 @@ class TestLocalBackend:
         backend = ai.get_backend()
         assert isinstance(backend, ai.LocalBackend)
         assert backend.n_gpu_layers == int(10 * 3.8 * 0.8 / 5.6) and backend.n_ctx == 4096
+        assert backend.n_threads == 4 and not backend.no_think
         assert ai.get_backend() is backend
         assert backend.generate("Hello") == "Sixty-five."
 
