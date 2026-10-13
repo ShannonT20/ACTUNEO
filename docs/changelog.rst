@@ -33,9 +33,16 @@ Added
   from templates, not from a language model. Fourteen calculations: present and accumulated
   values, annuities-certain, loan repayments, bond prices, effective rates, expectation of
   life, survival probabilities, pensions for life, term assurance premiums, chain ladder
-  reserves, Mack's standard error, retirement fund projections and ZWL to ZiG. Missing
-  information is asked for instead of guessed, and a short glossary answers "what is"
-  questions. Needs no optional packages
+  reserves, Mack's standard error, retirement fund projections and ZWL to ZiG, plus net
+  present value and internal rate of return and the IFRS 17 premium allocation approach.
+  Missing information is asked for instead of guessed. Needs no optional packages
+
+  * A question in several parts is split and each part answered
+  * Your own data can be passed: a claims triangle, a mortality table or yearly cash flows
+  * Mortality questions use the Zimbabwe 2023 tables unless another basis is named
+  * Questions in words are answered by the language model, speaking as an actuary, from its
+    own knowledge and from the matching passages of ACTUNEO's documentation and docstrings
+    (``actuneo.ai.knowledge``), which are listed with the answer
 * ``actuneo.ai`` local model (optional, ``pip install actuneo[ai]``):
 
   * ``setup()`` detects memory, processor, graphics card and free disk, recommends the

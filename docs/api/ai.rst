@@ -27,6 +27,25 @@ Asking questions
 .. autoclass:: actuneo.ai.Solution
    :members:
 
+.. autofunction:: actuneo.ai.read_data
+
+.. autofunction:: actuneo.ai.assistant.split_parts
+
+Searching ACTUNEO's own documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: actuneo.ai.knowledge
+   :no-members:
+
+.. autofunction:: actuneo.ai.knowledge.retrieve
+
+.. autofunction:: actuneo.ai.knowledge.build_corpus_file
+
+The model is told to answer in these terms:
+
+.. autodata:: actuneo.ai.ACTUARY_PROMPT
+   :no-value:
+
 Adding a calculation
 ~~~~~~~~~~~~~~~~~~~~
 

@@ -172,16 +172,32 @@ and the working is written from fixed templates, so no language model writes any
 or any step. If something needed is missing, the answer says what, instead of guessing.
 
 It covers present and accumulated values, annuities-certain, loan repayments, bond
-prices, effective rates, expectation of life, survival probabilities, pensions for life,
-term assurance premiums, chain ladder reserves, Mack's standard error, retirement fund
-projections and ZWL to ZiG. `examples/actuneo_ai_setup.ipynb` has questions to try at
-three levels of difficulty.
+prices, effective rates, net present value and internal rate of return, expectation of
+life, survival probabilities, pensions for life, term assurance premiums, chain ladder
+reserves, Mack's standard error, the IFRS 17 premium allocation approach, retirement fund
+projections and ZWL to ZiG.
 
-#### An optional local model for unusual wording
+- **Several parts.** "A man is aged 40. (a) What is his life expectancy? (b) What is the
+  probability he survives 20 years?" is split and each part answered.
+- **Your own data.** `ai.ask("Chain ladder reserve for my triangle?", data=my_triangle)`
+  takes a triangle, a mortality table with columns `age` and `qx`, or a list of yearly
+  cash flows. In a terminal: `actuneo-ai ask "IBNR reserve?" --data my_triangle.csv`.
+- **Zimbabwe tables by default.** Mortality questions use the Zimbabwe 2023 tables unless
+  the question says "South African" or "AM92", or you pass a table.
+- **Questions in words.** "What is the premium allocation approach?" or "What does
+  ACTUNEO do for pensions?" is answered by the language model, speaking as an actuary. It
+  is given the matching passages of ACTUNEO's own documentation and uses them with its
+  own knowledge; the passages are listed under the answer, which is marked as written by
+  the model. This needs a model installed (below), and its quality depends on the model.
 
-Clearly worded questions need no model. For wording the rules do not recognise, a
-language model that runs on your own machine can choose the calculation. It is offline
-and free after the download.
+`examples/actuneo_ai_setup.ipynb` has questions to try at three levels of difficulty.
+
+#### The local model
+
+Clearly worded calculations need no model. A language model that runs on your own
+machine answers questions in words and chooses the calculation when the wording is
+unusual. It is offline and free after the download. The smallest model is often wrong
+about general actuarial ideas; the 4B model or larger is much better.
 
 ```bash
 pip install "actuneo[ai]"

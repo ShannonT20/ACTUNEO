@@ -401,10 +401,28 @@ Pensions
 AI module
 ~~~~~~~~~
 
-* ``ask`` covers fourteen calculations, each on one fixed basis and set of
-  conventions (stated in the answer's assumptions). It is not a general
-  problem solver: a question outside those, or one that combines two
-  calculations, is not answered. Multi-step exam questions are out of reach.
+* ``ask`` covers sixteen calculations, each on one set of conventions
+  (stated in the answer's assumptions). It is not a general problem solver.
+  A question in several parts is split and each part answered on its own:
+  a part that depends on the answer to an earlier part cannot be done.
+* **Answers in words are written by the language model and can be wrong.**
+  The model is given matching passages of ACTUNEO's documentation and told
+  to answer as an actuary without inventing figures, but nothing checks what
+  it writes. With the smallest model (Qwen3 0.6B) answers about ACTUNEO were
+  accurate where a passage held the facts, and answers on general topics
+  contained errors (it called IFRS 17 a European Union standard). Larger
+  models have not been tried. Every such answer is marked as the model's.
+* The passages are found by matching words, not meaning, over the existing
+  documentation and docstrings only. There is no body of actuarial reference
+  text behind it: general actuarial knowledge comes from the model alone.
+* Parts are found from labels such as (a) and (b), separate questions, and
+  "and what is". Other ways of writing a multi-part question are read as one.
+* Your own data is recognised by its shape: a column named ``qx`` makes a
+  mortality table, a single row or column makes cash flows, anything else a
+  cumulative triangle. An incremental triangle passed this way is misread.
+* IFRS 17 is one calculation: the liability for remaining coverage under the
+  premium allocation approach, with the premium received at the start,
+  revenue by passage of time, no financing component and no loss component.
 * The question is read by pattern rules. They were written against about
   forty test questions and get those right; wording unlike them can be
   misread or not recognised. *How the question was read* shows what was
@@ -416,16 +434,16 @@ AI module
 * The working assumes one convention where practice varies (an effective
   annual rate for loans and bonds, half-yearly coupons, monthly pensions in
   advance). The alternative is noted for loans and bonds only.
-* Mortality questions default to South African tables. The Zimbabwe 2023
-  tables are used only when the question says so, and cannot value a
-  pension below age 76 or a female assured life.
-* Triangles are the two built-in examples (RAA and GenIns). A user's own
-  triangle cannot be passed in through a question.
-* The glossary has about twenty short definitions written for this library.
-  It has not been reviewed by an actuary.
+* Mortality questions use the Zimbabwe 2023 tables unless another basis is
+  named. Those tables have gaps, and the answers work around them in ways
+  that are judgements of this library: female assured lives are valued on
+  the male table, and a pension starting below age 76 is valued on the male
+  assured lives rates to age 75 joined to the pensioner rates from 76. The
+  assured lives rates are much lighter than pensioner rates at those ages,
+  so such a pension is valued higher than on a pensioner table. Each answer
+  states the table used.
 * With the smallest model (Qwen3 0.6B), two of three unusually worded test
-  questions were still not recognised. The model's own explanations are
-  never shown, because that model gave false definitions when tried.
+  calculations were still not recognised.
 * Apart from ``ask``, no calculation in ACTUNEO uses a language model.
 * The memory each model needs is an estimate: the size of the file plus
   about 1 GB. The rule that keeps models above about 5 GB off processors is
