@@ -57,11 +57,11 @@ def _models() -> None:
     print("Install one with:  actuneo-ai setup --model KEY")
 
 
-def _chat(use_model: bool = True) -> None:
+def _chat(use_model: bool = True, data: Optional[str] = None) -> None:
     """Answer questions one after another until the user stops."""
     from .assistant import ask
     print("Ask an actuarial question in plain words. Type 'topics' to see what can be "
-          "calculated, or 'quit' to stop.")
+          "calculated, 'data FILE' to use your own data, or 'quit' to stop.")
     while True:
         try:
             question = input("\n> ").strip()
@@ -76,8 +76,12 @@ def _chat(use_model: bool = True) -> None:
             for _, row in topics().iterrows():
                 print(f"  {row['calculation']}\n      e.g. {row['example']}")
             continue
+        if question.lower().startswith("data "):
+            data = question[5:].strip().strip('"') or None
+            print(f"  Using data from {data}." if data else "  No data file.")
+            continue
         print()
-        print(ask(question, use_model=use_model).explain())
+        print(ask(question, data=data, use_model=use_model).explain())
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -100,7 +104,10 @@ def _parser() -> argparse.ArgumentParser:
     ask.add_argument("question", nargs="+", help="the question, in plain words")
     ask.add_argument("--no-model", action="store_true",
                      help="use the fixed rules only, not the language model")
+    ask.add_argument("--data", help="a CSV or Excel file with your own triangle, mortality "
+                     "table (columns age and qx) or cash flows")
     chat = commands.add_parser("chat", help="ask one question after another")
+    chat.add_argument("--data", help="a CSV or Excel file with your own data")
     chat.add_argument("--no-model", action="store_true",
                       help="use the fixed rules only, not the language model")
     commands.add_parser("topics", help="list the calculations that can be asked for")
@@ -132,9 +139,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                             force=getattr(arguments, "force", False))
         elif command == "ask":
             from .assistant import ask
-            print(ask(" ".join(arguments.question), use_model=not arguments.no_model).explain())
+            print(ask(" ".join(arguments.question), data=arguments.data,
+                      use_model=not arguments.no_model).explain())
         elif command == "chat":
-            _chat(use_model=not arguments.no_model)
+            _chat(use_model=not arguments.no_model, data=arguments.data)
         elif command == "topics":
             from .assistant import topics
             for _, row in topics().iterrows():

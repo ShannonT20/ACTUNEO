@@ -36,6 +36,8 @@ class Param:
             quantity out of a question when several numbers are present
         choices: For a "choice": each value with the words that mean it
         monthly_to_annual: An amount stated per month is multiplied by 12
+        cue_only: Read this quantity only where a cue matches, never by
+            taking the next unused number in the question
         low, high: Range outside which a value is refused
     """
     name: str
@@ -46,6 +48,7 @@ class Param:
     cues: Tuple[str, ...] = ()
     choices: Optional[Dict[Any, Tuple[str, ...]]] = None
     monthly_to_annual: bool = False
+    cue_only: bool = False
     low: Optional[float] = None
     high: Optional[float] = None
 
@@ -60,6 +63,7 @@ class Solver:
     params: Tuple[Param, ...]
     solve: Callable[..., Solution] = field(compare=False)
     example: str = ""
+    uses: Tuple[str, ...] = ()      # kinds of the user's own data it can take
 
     def tool(self) -> Dict[str, Any]:
         """The solver described as a tool for a language model."""
@@ -103,12 +107,19 @@ SEX_WORDS = {"F": ("woman", "women", "female", "lady", "she", "her", "widow", "w
 AGE = Param("age", "age", "the age", low=0, high=120)
 SEX = Param("sex", "choice", "the sex (M or F)", required=False, default="M", choices=SEX_WORDS)
 RATE = Param("interest_rate", "rate", "the interest rate", low=-0.5, high=1.0)
-BASIS = Param("basis", "choice", "the mortality basis (south_africa or zimbabwe)",
-              required=False, default="south_africa",
+BASIS = Param("basis", "choice", "the mortality basis (zimbabwe, south_africa or am92)",
+              required=False, default="zimbabwe",
               choices={"zimbabwe": ("zimbabwe", "zimbabwean", "zim", "ipec"),
-                       "south_africa": ("south africa", "south african", "sa85", "assa")})
-TRIANGLE = Param("triangle", "choice", "the triangle (RAA or GenIns)",
-                 choices={"RAA": ("raa",), "GenIns": ("genins", "gen ins", "taylor", "ashe")})
+                       "south_africa": ("south africa", "south african", "sa85", "sa 85",
+                                        "saiml98", "saifl98", "assa"),
+                       "am92": ("am92", "am 92", "uk table", "uk tables", "institute table"),
+                       "own": ("my table", "my own table", "own table", "this table",
+                               "the table supplied", "my mortality")})
+TRIANGLE = Param("triangle", "choice", "the triangle (RAA, GenIns, or your own data)",
+                 choices={"RAA": ("raa",), "GenIns": ("genins", "gen ins", "taylor", "ashe"),
+                          "own": ("my triangle", "my own triangle", "my data", "this triangle",
+                                  "the triangle supplied", "my claims", "own triangle",
+                                  "this data", "the data")})
 
 
 def _years(label: str = "the number of years", cues: Tuple[str, ...] = ()) -> Param:
@@ -357,48 +368,82 @@ register(Solver(
 # ----------------------------------------------------------------------
 # Mortality and life contingencies
 # ----------------------------------------------------------------------
-def _table(basis: str, sex: str, age: float, annuitant: bool):
-    """The mortality table for a basis, with a line describing it."""
-    from ..mortality import MortalityTable
-    if basis == "zimbabwe":
-        if annuitant:
-            name = f"post_retirement_pensions_{'male' if sex == 'M' else 'female'}"
-            table = MortalityTable.from_zimbabwe_2023(name)
-            label = f"Zimbabwe 2023 post-retirement pensions, {'males' if sex == 'M' else 'females'}"
+def _check_age(table, label: str, age: float) -> None:
+    if not table.min_age <= age <= table.max_age:
+        raise ValueError(f"{label} covers ages {table.min_age} to {table.max_age}, so age "
+                         f"{age:g} cannot be valued on it. Name another basis in the question "
+                         "(Zimbabwe, South African or AM92) or pass your own table.")
+
+
+def _table(basis: str, sex: str, age: float, annuitant: bool, data: Optional[dict] = None):
+    """
+    The mortality table for a basis, with a line describing it.
+
+    The default is Zimbabwe 2023. South African tables and AM92 are used only
+    when the question names them, and the user's own table when one is passed.
+    """
+    from ..mortality import MortalityTable, load_am92
+    who = "males" if sex == "M" else "females"
+    if basis == "own":
+        if not data or data.get("table") is None:
+            raise ValueError("You asked for your own table but did not pass one. Pass it as "
+                             "data, for example ask(question, data=my_table).")
+        table = data["table"]
+        label = f"your own table ({table.name})"
+    elif basis == "am92":
+        table = load_am92().ultimate
+        label = ("AM92 ultimate (UK assured lives, males, 1991-94), the usual table of UK "
+                 "actuarial examinations. It is not a basis for African lives")
+    elif basis == "south_africa":
+        if annuitant or age >= 40:
+            key = "saiml98" if sex == "M" else "saifl98"
+            table = MortalityTable.from_south_africa(key)
+            label = f"South African annuitants 1996-2000 ({key.upper()}, {who})"
         else:
-            table = MortalityTable.from_zimbabwe_2023("male_assured_lives")
-            label = "Zimbabwe 2023 male assured lives"
-            if sex == "F":
-                label += " (no female assured-lives table is published, so the male table is used)"
-    elif annuitant or age >= 40:
-        key, who = ("saiml98", "males") if sex == "M" else ("saifl98", "females")
-        table = MortalityTable.from_south_africa(key)
-        label = f"South African annuitants 1996-2000 ({key.upper()}, {who})"
+            table = MortalityTable.from_south_africa("sa8590")
+            label = "South African assured lives 1985-90 (SA85-90, not split by sex)"
+    elif annuitant:
+        pensioners = MortalityTable.from_zimbabwe_2023(
+            f"post_retirement_pensions_{'male' if sex == 'M' else 'female'}")
+        if age >= pensioners.min_age:
+            table = pensioners
+            label = f"Zimbabwe 2023 post-retirement pensions, {who}"
+        else:
+            assured = MortalityTable.from_zimbabwe_2023("male_assured_lives")
+            keep = assured.ages < pensioners.min_age
+            table = MortalityTable(
+                list(assured.ages[keep]) + list(pensioners.ages),
+                list(assured.qx_values[keep]) + list(pensioners.qx_values),
+                name="Zimbabwe 2023 assured lives to 75, pensioners from 76")
+            label = (f"Zimbabwe 2023. The published pensioner tables start at age "
+                     f"{pensioners.min_age}, so the male assured lives rates are used up to age "
+                     f"{pensioners.min_age - 1} and the post-retirement pensioner rates ({who}) "
+                     "after that. This join is ACTUNEO's, not a published table")
     else:
-        table = MortalityTable.from_south_africa("sa8590")
-        label = "South African assured lives 1985-90 (SA85-90, not split by sex)"
-    if not table.min_age <= age <= table.max_age:
-        raise ValueError(f"{label} covers ages {table.min_age} to {table.max_age}, so age "
-                         f"{age:g} cannot be valued on it.")
+        table = MortalityTable.from_zimbabwe_2023("male_assured_lives")
+        label = "Zimbabwe 2023 male assured lives"
+        if sex == "F":
+            label += " (no female assured lives table is published, so the male table is used)"
+    _check_age(table, label, age)
     return table, label
 
 
-def _assured_table(basis: str, age: float):
+def _assured_table(basis: str, age: float, data: Optional[dict] = None):
+    return _table(basis, "M", age, annuitant=False, data=data) if basis != "south_africa" \
+        else _south_african_assured(age)
+
+
+def _south_african_assured(age: float):
     from ..mortality import MortalityTable
-    if basis == "zimbabwe":
-        table, label = MortalityTable.from_zimbabwe_2023("male_assured_lives"), \
-            "Zimbabwe 2023 male assured lives"
-    else:
-        table, label = MortalityTable.from_south_africa("sa8590"), \
-            "South African assured lives 1985-90 (SA85-90)"
-    if not table.min_age <= age <= table.max_age:
-        raise ValueError(f"{label} covers ages {table.min_age} to {table.max_age}, so age "
-                         f"{age:g} cannot be valued on it.")
+    table = MortalityTable.from_south_africa("sa8590")
+    label = "South African assured lives 1985-90 (SA85-90)"
+    _check_age(table, label, age)
     return table, label
 
 
-def _life_expectancy(age: int, sex: str = "M", basis: str = "south_africa") -> Solution:
-    table, label = _table(basis, sex, age, annuitant=False)
+def _life_expectancy(age: int, sex: str = "M", basis: str = "zimbabwe",
+                     data: Optional[dict] = None) -> Solution:
+    table, label = _table(basis, sex, age, annuitant=False, data=data)
     frame = table.to_dataframe().set_index("age")
     scale = RADIX / table.radix
     lx, Tx = frame.loc[age, "lx"] * scale, frame.loc[age, "Tx"] * scale
@@ -434,11 +479,13 @@ register(Solver(
     "Expectation of life: how many more years a person of an age is expected to live",
     ((r"life expectancy|expectation of life", 4),
      (r"expect(ed)? to live|how long .*\blive|more years|years (left|remaining)", 3)),
-    (AGE, SEX, BASIS), _life_expectancy, "What is the life expectancy of a 45 year old woman?"))
+    (AGE, SEX, BASIS), _life_expectancy, "What is the life expectancy of a 45 year old woman?",
+    uses=("table",)))
 
 
-def _survival_probability(age: int, years: int, basis: str = "south_africa") -> Solution:
-    table, label = _assured_table(basis, age)
+def _survival_probability(age: int, years: int, basis: str = "zimbabwe",
+                          data: Optional[dict] = None) -> Solution:
+    table, label = _assured_table(basis, age, data)
     if age + years > table.max_age + 1:
         raise ValueError(f"{label} stops at age {table.max_age}, so survival to age "
                          f"{age + years} cannot be read from it.")
@@ -468,14 +515,15 @@ register(Solver(
     (AGE, _years("the number of years to survive",
                  (r"surviv\w*\s+(?:for\s+|another\s+)?" + r"(\d{1,3})\s*(?:years?|yrs?)",
                   r"(?:another|next|within|in)\s+(\d{1,3})\s*(?:years?|yrs?)")), BASIS),
-    _survival_probability, "What is the probability that a 30 year old survives 20 years?"))
+    _survival_probability, "What is the probability that a 30 year old survives 20 years?",
+    uses=("table",)))
 
 
 def _life_annuity(age: int, annual_amount: float, interest_rate: float, sex: str = "M",
-                  basis: str = "south_africa") -> Solution:
+                  basis: str = "zimbabwe", data: Optional[dict] = None) -> Solution:
     from ..mortality import SurvivalFunctions
     from ..pensions import pension_annuity
-    table, label = _table(basis, sex, age, annuitant=True)
+    table, label = _table(basis, sex, age, annuitant=True, data=data)
     v = 1 / (1 + interest_rate)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -517,13 +565,14 @@ register(Solver(
      Param("annual_amount", "amount", "the yearly amount of the pension", low=0,
            monthly_to_annual=True),
      RATE, SEX, BASIS),
-    _life_annuity, "Value a pension of 6000 a year from age 65 at 5% interest."))
+    _life_annuity, "Value a pension of 6000 a year from age 65 at 5% interest.",
+    uses=("table",)))
 
 
 def _term_assurance_premium(age: int, term: int, sum_assured: float, interest_rate: float,
-                            basis: str = "south_africa") -> Solution:
+                            basis: str = "zimbabwe", data: Optional[dict] = None) -> Solution:
     from ..mortality import SurvivalFunctions
-    table, label = _assured_table(basis, age)
+    table, label = _assured_table(basis, age, data)
     if age + term > table.max_age + 1:
         raise ValueError(f"{label} stops at age {table.max_age}, so a {term}-year term from age "
                          f"{age} cannot be valued on it.")
@@ -566,25 +615,32 @@ register(Solver(
     (AGE, Param("term", "years", "the term of the cover in years", low=1, high=100),
      Param("sum_assured", "amount", "the sum assured", low=0), RATE, BASIS),
     _term_assurance_premium,
-    "Premium for a 20-year term assurance of 100000 for a 35 year old at 6% interest"))
+    "Premium for a 20-year term assurance of 100000 for a 35 year old at 6% interest",
+    uses=("table",)))
 
 
 # ----------------------------------------------------------------------
 # Reserving
 # ----------------------------------------------------------------------
-def _load_triangle(triangle: str):
+def _load_triangle(triangle: str, data: Optional[dict] = None):
     from ..loss_reserving import load_genins, load_raa
+    if triangle == "own":
+        if not data or data.get("triangle") is None:
+            raise ValueError("You asked about your own triangle but did not pass one. Pass it "
+                             "as data, for example ask(question, data=my_triangle).")
+        own = data["triangle"]
+        return own, f"your own data ({own.name})"
     loaders = {"RAA": (load_raa, "RAA (reinsurance general liability, a standard example)"),
                "GenIns": (load_genins, "GenIns (the Taylor and Ashe data, a standard example)")}
     load, label = loaders[triangle]
     return load(), label
 
 
-def _chain_ladder(triangle: str) -> Solution:
+def _chain_ladder(triangle: str, data: Optional[dict] = None) -> Solution:
     from ..loss_reserving import ChainLadder
-    data, label = _load_triangle(triangle)
+    data, label = _load_triangle(triangle, data)
     model = ChainLadder(data)
-    summary = model.summary()
+    summary = model.summary().drop(index="Total", errors="ignore")
     factors = [f"{period}: {factor:.4f}" for period, factor in model.factors.items()]
     rows = [f"{'origin':>8} {'latest':>14} {'ultimate':>14} {'IBNR':>14}"]
     rows += [f"{str(origin):>8} {row['latest']:>14,.0f} {row['ultimate']:>14,.0f} {row['ibnr']:>14,.0f}"
@@ -617,12 +673,13 @@ register(Solver(
     "IBNR claims reserve for a run-off triangle by the chain ladder method",
     ((r"chain[- ]ladder", 3), (r"\bibnr\b", 3), (r"\breserves?\b|outstanding claims", 1),
      (r"triangle", 1)),
-    (TRIANGLE,), _chain_ladder, "Estimate the IBNR for the RAA triangle with the chain ladder method."))
+    (TRIANGLE,), _chain_ladder, "Estimate the IBNR for the RAA triangle with the chain ladder method.",
+    uses=("triangle",)))
 
 
-def _mack(triangle: str) -> Solution:
+def _mack(triangle: str, data: Optional[dict] = None) -> Solution:
     from ..loss_reserving import MackChainLadder
-    data, label = _load_triangle(triangle)
+    data, label = _load_triangle(triangle, data)
     model = MackChainLadder(data, est_sigma="mack")
     summary = model.summary().drop(index="Total", errors="ignore")
     rows = [f"{'origin':>8} {'IBNR':>14} {'std error':>14} {'cv':>8}"]
@@ -663,7 +720,8 @@ register(Solver(
     "Mack standard error: the uncertainty or variability of the chain ladder reserve for a triangle",
     ((r"\bmack\b", 6), (r"standard error|prediction error", 6),
      (r"uncertain|variability|how reliable|how sure|confidence", 6)),
-    (TRIANGLE,), _mack, "What is the Mack standard error for the GenIns triangle?"))
+    (TRIANGLE,), _mack, "What is the Mack standard error for the GenIns triangle?",
+    uses=("triangle",)))
 
 
 # ----------------------------------------------------------------------
@@ -764,71 +822,144 @@ register(Solver(
 
 
 # ----------------------------------------------------------------------
-# Definitions
+# Investment appraisal
 # ----------------------------------------------------------------------
-#: Short definitions, written for this library. Matched by the words in the key.
-GLOSSARY: Dict[str, str] = {
-    "ibnr": "IBNR stands for incurred but not reported: claims from events that have already "
-            "happened but which the insurer has not yet been told about. The IBNR reserve is the "
-            "amount set aside for them. In practice the term often also covers further "
-            "development on reported claims (IBNER, incurred but not enough reported).",
-    "chain ladder": "The chain ladder is a way of estimating outstanding claims from a run-off "
-                    "triangle. It works out how claims have grown from one development year to "
-                    "the next in the past (the development factors) and assumes each origin year "
-                    "will grow in the same way to its ultimate.",
-    "bornhuetter": "The Bornhuetter-Ferguson method estimates outstanding claims as an expected "
-                   "ultimate (premium times an assumed loss ratio) multiplied by the proportion "
-                   "of claims still to develop. It leans on the prior estimate for recent years, "
-                   "where the chain ladder is unstable.",
-    "mack": "Mack's model gives a standard error for the chain ladder reserve without assuming a "
-            "distribution for the claims. It has two parts: process risk, because claims are "
-            "random, and parameter risk, because the development factors are estimates.",
-    "annuity-due": "An annuity-due is a series of payments made at the start of each period. An "
-                   "annuity in arrears (an immediate annuity) is paid at the end of each period. "
-                   "The annuity-due is worth more by a factor of (1 + i).",
-    "annuity": "An annuity is a series of regular payments. An annuity-certain is paid for a "
-               "fixed term whatever happens; a life annuity is paid only while the person is "
-               "alive, so its value allows for the chance of survival to each payment.",
-    "present value": "The present value of a future payment is the amount which, invested now "
-                     "at the assumed rate of interest, would grow to that payment by its due "
-                     "date. It is the payment multiplied by the discount factor v^n, where "
-                     "v = 1 / (1 + i).",
-    "discount factor": "The discount factor v = 1 / (1 + i) is the present value of 1 due in one "
-                       "year at effective rate i. For n years it is v^n.",
-    "effective rate": "An effective rate of interest is the interest earned on 1 over a period, "
-                      "with interest paid once at the end. A nominal rate convertible p times a "
-                      "year, i(p), means i(p)/p is paid each period, which compounds to an "
-                      "effective annual rate of (1 + i(p)/p)^p - 1.",
-    "force of interest": "The force of interest is the nominal rate convertible continuously: "
-                         "delta = ln(1 + i). An amount accumulates by a factor exp(delta x t) "
-                         "over t years.",
-    "life expectancy": "The expectation of life at age x is the average number of further years "
-                       "lived by people of that age on a given mortality table. The complete "
-                       "expectation counts fractions of a year; the curtate expectation counts "
-                       "whole years only and is about half a year less.",
-    "term assurance": "A term assurance pays the sum assured if the life dies within a fixed "
-                      "term and nothing otherwise. A whole life assurance pays whenever death "
-                      "occurs; an endowment assurance pays on death within the term or on "
-                      "survival to the end of it.",
-    "net premium": "A net premium is the premium that exactly pays for the benefits on the "
-                   "assumed mortality and interest, with nothing added for expenses or profit. "
-                   "It comes from the equation of value: expected present value of premiums "
-                   "equals expected present value of benefits.",
-    "equation of value": "An equation of value sets the present value of money paid in equal to "
-                         "the present value of money paid out, both at the same date and rate "
-                         "of interest. Solving it gives a premium, a yield or a repayment.",
-    "reserve": "A reserve is the amount an insurer or pension fund holds now to meet payments "
-               "it expects to make later. For a life policy it is the expected present value of "
-               "future benefits less that of future premiums.",
-    "funding level": "The funding level of a pension fund is the value of its assets divided by "
-                     "the value of its liabilities. Below 100% the fund is in deficit.",
-    "projected unit": "The projected unit method values the pension earned by service to date, "
-                      "based on salary projected to retirement. The cost of one more year of "
-                      "service is the standard contribution. It is the method IAS 19 requires.",
-    "duration": "Duration (the discounted mean term) is the average time to a set of payments, "
-                "weighted by their present values. It measures how sensitive their value is to "
-                "a change in the rate of interest.",
-    "qx": "q_x is the probability that a life aged exactly x dies before age x + 1. p_x = 1 - q_x "
-          "is the probability of surviving the year, and l_x is the number of survivors at age "
-          "x out of the table's starting number.",
-}
+def _net_present_value(interest_rate: Optional[float] = None,
+                       data: Optional[dict] = None) -> Solution:
+    from ..finance import Cashflows
+    flows = (data or {}).get("cashflows")
+    if not flows or len(flows) < 2:
+        raise ValueError("I need the cash flows: list them in the question (\"cash flows of "
+                         "-1000, 300, 400, 500\") or pass them as data, one amount per year "
+                         "starting now.")
+    flows = [float(amount) for amount in flows]
+    times = list(range(len(flows)))
+    project = Cashflows(times, flows)
+    given = {"cash flows": ", ".join(money(amount) for amount in flows) + "  (at times 0, 1, 2, ...)"}
+    steps, assumptions = [], ["One cash flow at the start (time 0) and one at the end of each "
+                              "year after it.", "Interest is an effective annual rate."]
+    value = float("nan")
+    answer = []
+    if interest_rate is not None:
+        v = 1 / (1 + interest_rate)
+        given["interest i"] = percent(interest_rate)
+        rows = [f"{'t':>3} {'cash flow':>14} {'v^t':>10} {'present value':>15}"]
+        rows += [f"{t:>3} {amount:>14,.2f} {v ** t:>10.6f} {amount * v ** t:>15,.2f}"
+                 for t, amount in zip(times, flows)]
+        value = project.net_present_value(interest_rate)
+        steps.append(Step("Discount each cash flow",
+                          ["PV of a cash flow at time t = cash flow x v^t,  v = 1 / (1 + i) = "
+                           + number(v)] + rows))
+        steps.append(Step("Net present value: add them up", [f"NPV = {money(value)}"]))
+        answer.append(f"The net present value at {percent(interest_rate)} is {money(value)}.")
+    changes = sum(1 for a, b in zip(flows, flows[1:]) if a * b < 0)
+    if changes >= 1:
+        rate = project.internal_rate_of_return()
+        steps.append(Step("Internal rate of return: the rate at which the NPV is zero",
+                          ["Solve  sum of cash flow x (1 + i)^-t = 0  for i (by trial)",
+                           f"i = {rate:.4%}",
+                           f"Check: NPV at {rate:.4%} = {money(project.net_present_value(rate))}"]))
+        answer.append(f"The internal rate of return is {rate:.2%}.")
+        if interest_rate is None:
+            value = rate
+        if changes > 1:
+            assumptions.append("The cash flows change sign more than once, so there may be "
+                               "more than one rate at which the NPV is zero.")
+    check = None
+    if interest_rate is not None and changes >= 1:
+        verdict = "above" if rate > interest_rate else "below"
+        check = (f"The internal rate of return is {verdict} {percent(interest_rate)}, which agrees "
+                 f"with a {'positive' if value > 0 else 'negative'} NPV at that rate.")
+    if not steps:
+        raise ValueError("I need an interest rate to work out a net present value, and the cash "
+                         "flows must change sign for there to be an internal rate of return.")
+    return Solution("Net present value and internal rate of return", given, steps,
+                    " ".join(answer), value, assumptions, check)
+
+
+register(Solver(
+    "net_present_value", "Net present value and internal rate of return",
+    "Net present value (NPV) and internal rate of return (IRR) of a series of yearly cash flows, "
+    "for appraising a project or investment",
+    ((r"\bnpv\b|net present value", 6), (r"\birr\b|internal rate of return", 6),
+     (r"cash\s?flows?", 4), (r"\bproject\b|appraisal|payback", 2)),
+    (Param("interest_rate", "rate", "the interest rate", required=False, default=None,
+           low=-0.5, high=1.0),),
+    _net_present_value, "What is the NPV at 8% of cash flows of -1000, 300, 400, 500?",
+    uses=("cashflows",)))
+
+
+# ----------------------------------------------------------------------
+# IFRS 17, premium allocation approach
+# ----------------------------------------------------------------------
+def _paa_liability(premium: float, elapsed_months: float, coverage_months: float = 12,
+                   acquisition_costs: float = 0.0) -> Solution:
+    if elapsed_months > coverage_months:
+        raise ValueError("The months elapsed cannot exceed the coverage period.")
+    share = elapsed_months / coverage_months
+    revenue = premium * share
+    amortised = acquisition_costs * share
+    liability = premium - acquisition_costs - revenue + amortised
+    steps = [
+        Step("Proportion of the coverage provided so far (passage of time)",
+             ["elapsed / coverage", f"  = {elapsed_months:g} / {coverage_months:g}",
+              f"  = {number(share, 4)}"]),
+        Step("Insurance revenue recognised to date",
+             ["revenue = premium x proportion", f"        = {money(premium)} x {number(share, 4)}",
+              f"        = {money(revenue)}"]),
+    ]
+    if acquisition_costs:
+        steps.append(Step("Acquisition cash flows amortised to date (they are deferred)",
+                          ["amortised = acquisition costs x proportion",
+                           f"          = {money(acquisition_costs)} x {number(share, 4)}",
+                           f"          = {money(amortised)}"]))
+    steps.append(Step("Liability for remaining coverage",
+                      ["LRC = premiums received - acquisition cash flows paid",
+                       "      + amortisation of acquisition cash flows - revenue recognised",
+                       f"    = {money(premium)} - {money(acquisition_costs)} + {money(amortised)} "
+                       f"- {money(revenue)}", f"    = {money(liability)}"]))
+    return Solution(
+        "IFRS 17 premium allocation approach: liability for remaining coverage",
+        {"premium received": money(premium), "coverage period": f"{coverage_months:g} months",
+         "elapsed": f"{elapsed_months:g} months",
+         "acquisition cash flows": money(acquisition_costs)},
+        steps, f"The liability for remaining coverage is {money(liability)}, after insurance "
+               f"revenue of {money(revenue)} to date.", liability,
+        ["The whole premium was received at the start, and acquisition cash flows were paid "
+         "then and deferred (not expensed).",
+         "Revenue is recognised evenly with the passage of time (IFRS 17.B126(a)).",
+         "No significant financing component, so no interest is accreted, and the group is not "
+         "onerous, so there is no loss component.",
+         "The liability for incurred claims is separate and is not included."],
+        f"The same as (premium - acquisition costs) x unexpired proportion = "
+        f"{money(premium - acquisition_costs)} x {number(1 - share, 4)} = "
+        f"{money((premium - acquisition_costs) * (1 - share))}.")
+
+
+register(Solver(
+    "paa_liability", "IFRS 17 premium allocation approach: liability for remaining coverage",
+    "IFRS 17 premium allocation approach (PAA): liability for remaining coverage (LRC) and "
+    "insurance revenue from the premium, the coverage period and the time elapsed",
+    ((r"\bpaa\b|premium allocation", 6), (r"\blrc\b|remaining coverage", 6),
+     (r"ifrs\s?17", 3), (r"insurance revenue|unearned", 3), (r"\bpremium", 1)),
+    (Param("premium", "amount", "the premium received", low=0,
+           cues=(r"premiums?\s+(?:received\s+)?(?:of|is|was|=)\s+\$?" + NUM,
+                 r"\$?" + NUM + r"\s+(?:of\s+)?premium")),
+     Param("elapsed_months", "amount", "the number of months elapsed", cue_only=True, low=0,
+           high=120,
+           cues=(r"(?:after|at the end of|first)\s+" + NUM + r"\s+months?",
+                 NUM + r"\s+months?\s+(?:have\s+|has\s+)?(?:elapsed|passed|in\b|later|gone)",
+                 r"month\s+" + NUM + r"\b")),
+     Param("coverage_months", "amount", "the coverage period in months", required=False,
+           default=12, cue_only=True, low=1, high=120,
+           cues=(NUM + r"[\s-]months?[\s-](?:polic\w+|cover\w*|contract|term)",
+                 r"(?:coverage|cover|policy|contract)\s+(?:period\s+)?(?:of|is|for)\s+" + NUM
+                 + r"\s+months?")),
+     Param("acquisition_costs", "amount", "the acquisition cash flows", required=False,
+           default=0.0, cue_only=True, low=0,
+           cues=(r"(?:acquisition\s+(?:costs?|cash\s?flows?|expenses?)|commission)\s+"
+                 r"(?:paid\s+)?(?:of|is|was|=)\s+\$?" + NUM,
+                 r"\$?" + NUM + r"\s+(?:of\s+)?(?:acquisition|commission)"))),
+    _paa_liability,
+    "IFRS 17 PAA: premium of 1200 for a 12-month policy with acquisition costs of 180. "
+    "What is the LRC after 3 months?"))

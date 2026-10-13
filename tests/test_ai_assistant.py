@@ -9,16 +9,21 @@ language model is replaced by a stand-in.
 import importlib
 import warnings
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from actuneo import ai, zimbabwe
-from actuneo.ai.assistant import extract_arguments, normalise, rank_solvers
+from actuneo.ai import knowledge
+from actuneo.ai.assistant import (ACTUARY_PROMPT, extract_arguments, normalise, rank_solvers,
+                                  read_data, split_parts)
 from actuneo.ai.benchmark import arguments_match
-from actuneo.ai.solvers import GLOSSARY, SOLVERS
-from actuneo.finance import Bond, Loan
+from actuneo.ai.solvers import SOLVERS
+from actuneo.finance import Bond, Cashflows, Loan
+from actuneo.ifrs17 import PAAGroup
 from actuneo.life import LifeAssurance
 from actuneo.loss_reserving import ChainLadder, MackChainLadder, load_genins, load_raa
-from actuneo.mortality import MortalityTable
+from actuneo.mortality import MortalityTable, load_am92
 from actuneo.pensions import DCProjection, pension_annuity
 
 assistant = importlib.import_module("actuneo.ai.assistant")
@@ -59,6 +64,10 @@ QUESTIONS = [
     ("A bond issued 5 years ago with a 20-year term pays 8%. Yields are 6%. What is the price now?", "bond_price", {"coupon_rate": 0.08, "years": 15, "yield_rate": 0.06}),
     ("Our Harare branch lent 80,000 to a 40 year old teacher over 20 years at 12%. Monthly instalment?", "loan_repayment", {"amount": 80000, "interest_rate": 0.12, "years": 20}),
     ("The RAA triangle has 10 accident years. What reserve does chain ladder give?", "chain_ladder_reserve", {"triangle": "RAA"}),
+    # investments and IFRS 17
+    ("What is the NPV at 8% of cash flows of -1000, 300, 400, 500?", "net_present_value", {"interest_rate": 0.08}),
+    ("IFRS 17 PAA: premium of 1200 for a 12-month policy with acquisition costs of 180. What is the LRC after 3 months?", "paa_liability", {"premium": 1200, "elapsed_months": 3, "coverage_months": 12, "acquisition_costs": 180}),
+    ("Under the premium allocation approach a premium of 2400 was received for a 6-month policy. What is the liability for remaining coverage after 2 months?", "paa_liability", {"premium": 2400, "elapsed_months": 2, "coverage_months": 6, "acquisition_costs": 0}),
 ]
 
 
@@ -101,8 +110,13 @@ class TestReadingQuestions:
         assert "7.5% from the member + 10% from the employer = 17.5%" in " ".join(pot.notes)
         bond = ai.ask("A bond issued 5 years ago with a 20-year term pays 8%. Yields are 6%.")
         assert "= 15 years left" in " ".join(bond.notes)
-        both = ai.ask("Chain ladder reserve for RAA and GenIns")
-        assert both.arguments == {"triangle": "RAA"} and "More than one" in " ".join(both.notes)
+
+    def test_names_that_contain_numbers_are_not_read_as_quantities(self):
+        found, _, missing = extract_arguments(SOLVERS["paa_liability"],
+                                              "what does actuneo do for ifrs 17?")
+        assert found == {} and [p.name for p in missing] == ["premium", "elapsed_months"]
+        assert not assistant.has_quantities("IAS 19 and IFRS 17 under SI 67")
+        assert assistant.has_quantities("a loan of 500 under IFRS 17")
 
     def test_an_age_is_not_mistaken_for_a_term(self):
         found, _, missing = extract_arguments(
@@ -126,35 +140,27 @@ class TestReadingQuestions:
         old = ai.ask("What is the life expectancy of a 400 year old man?")
         assert old.kind == "need_more" and "outside the range" in old.text
         off_table = ai.ask("What is the probability that a 5 year old survives 10 years?")
-        assert off_table.kind == "need_more" and "covers ages 15 to 104" in off_table.text
-        zim = ai.ask("Value a pension of 6000 a year from age 65 at 5% on the Zimbabwe tables")
-        assert zim.kind == "need_more" and "76" in zim.text
+        assert off_table.kind == "need_more" and "covers ages 20 to 100" in off_table.text
+        assert "Name another basis" in off_table.text
+        late = ai.ask("PAA premium of 1200 for a 12-month policy, LRC after 15 months?")
+        assert late.kind == "need_more" and "cannot exceed the coverage period" in late.text
 
-    def test_unrelated_questions(self):
-        for question in ["Good morning, can you help me?", "", "What is the weather?",
+    def test_greetings_and_unrelated_questions(self):
+        hello = ai.ask("Good morning")
+        assert hello.kind == "greeting" and "Chain ladder reserve" in hello.text
+        assert ai.ask("").kind == "unknown"
+        for question in ["What is the weather like on Mars today, xyzzy?",
                          "What is the probability that it rains in Bulawayo tomorrow?"]:
             answer = ai.ask(question)
-            assert answer.kind == "unknown" and "I can work out:" in answer.text
-            assert "Chain ladder reserve" in answer.text
-
-    def test_definitions_come_from_the_glossary(self):
-        ibnr = ai.ask("Explain what IBNR means.")
-        assert ibnr.kind == "definition" and ibnr.text == GLOSSARY["ibnr"]
-        assert "incurred but not reported" in ibnr.text
-        better = ai.ask("Which is better, chain ladder or Bornhuetter-Ferguson?")
-        assert better.kind == "definition"
-        assert GLOSSARY["chain ladder"] in better.text and GLOSSARY["bornhuetter"] in better.text
-        assert "does not choose between them" in better.text
-        due = ai.ask("What is an annuity-due?")
-        assert due.text.startswith("An annuity-due is")
-        # A calculation that can be done is done, even if it reads like a definition
-        assert ai.ask("What is the Mack standard error for the GenIns triangle?").solved
+            assert not answer.solved and answer.kind in ("unknown", "reference")
 
     def test_ranking(self):
         ranked = rank_solvers("how uncertain is the chain ladder reserve for raa?")
         assert ranked[0][1].name == "mack_standard_error" and ranked[1][1].name == "chain_ladder_reserve"
         assert rank_solvers("hello there") == []
-        assert len(ai.topics()) == len(SOLVERS) == 14
+        assert len(ai.topics()) == len(SOLVERS) == 16
+        boosted = rank_solvers("what is the reserve?", ("triangle",))
+        assert boosted[0][1].name == "chain_ladder_reserve" and boosted[0][0] == 4
 
 
 class TestSolutionsAgreeWithTheLibrary:
@@ -182,36 +188,76 @@ class TestSolutionsAgreeWithTheLibrary:
         assert self.value("Price a 10-year bond with a 6% coupon at a yield of 7%") == \
             pytest.approx(Bond(0.06, 10, frequency=2).price(0.07))
 
-    def test_mortality(self):
-        females = MortalityTable.from_south_africa("saifl98")
-        males = MortalityTable.from_south_africa("saiml98")
-        assured = MortalityTable.from_south_africa("sa8590")
-        assert self.value("Life expectancy of a 45 year old woman") == \
-            pytest.approx(females.life_expectancy(45))
-        assert self.value("Life expectancy of a 30 year old man") == \
-            pytest.approx(assured.life_expectancy(30))
+    def test_zimbabwe_tables_are_the_default(self):
+        assured = MortalityTable.from_zimbabwe_2023("male_assured_lives")
+        answer = ai.ask("Life expectancy of a 45 year old man")
+        assert answer.arguments["basis"] == "zimbabwe"
+        assert answer.value == pytest.approx(assured.life_expectancy(45))
+        assert "Zimbabwe 2023 male assured lives" in answer.explain()
+        assert "South African" not in answer.explain()
+        woman = ai.ask("Life expectancy of a 45 year old woman")
+        assert woman.value == pytest.approx(assured.life_expectancy(45))
+        assert "no female assured lives table is published" in woman.explain()
         assert self.value("Probability that a 30 year old survives 20 years") == \
             pytest.approx(assured.npx(30, 20))
-        assert self.value("Value a pension of 6000 a year from age 65 at 5% interest.") == \
-            pytest.approx(6000 * pension_annuity(males, 65, 0.05))
         assert self.value("Premium for a 20-year term assurance of 100000 for a 35 year old at 6%") == \
             pytest.approx(100000 * LifeAssurance(assured, interest_rate=0.06)
                           .net_annual_premium(35, 20, "term"))
 
-    def test_zimbabwe_basis(self):
-        table = MortalityTable.from_zimbabwe_2023("male_assured_lives")
-        answer = ai.ask("Life expectancy of a 40 year old man on the Zimbabwe tables")
-        assert answer.arguments["basis"] == "zimbabwe"
-        assert answer.value == pytest.approx(table.life_expectancy(40))
-        assert "Zimbabwe 2023 male assured lives" in answer.explain()
-        woman = ai.ask("Life expectancy of a 40 year old woman in Zimbabwe")
-        assert "no female assured-lives table" in woman.explain()
-        assert self.value("Chance a 30 year old survives 10 years, Zimbabwe basis") == \
-            pytest.approx(table.npx(30, 10))
+    def test_zimbabwe_pensions(self):
+        pensioners = MortalityTable.from_zimbabwe_2023("post_retirement_pensions_female")
+        old = ai.ask("Value a pension of 6000 a year from age 80 at 5% interest for a woman")
+        assert old.value == pytest.approx(6000 * pension_annuity(pensioners, 80, 0.05))
+        assert "Zimbabwe 2023 post-retirement pensions, females" in old.explain()
+        # Below 76 the published assured lives and pensioner rates are joined, and it says so
+        assured = MortalityTable.from_zimbabwe_2023("male_assured_lives")
+        men = MortalityTable.from_zimbabwe_2023("post_retirement_pensions_male")
+        joined = MortalityTable(list(range(20, 76)) + list(men.ages),
+                                list(assured.qx(list(range(20, 76)))) + list(men.qx_values))
+        young = ai.ask("Value a pension of 6000 a year from age 65 at 5% interest.")
+        assert young.value == pytest.approx(6000 * pension_annuity(joined, 65, 0.05))
+        assert "This join is ACTUNEO's, not a published table" in young.explain()
+
+    def test_other_bases_only_when_named(self):
+        males = MortalityTable.from_south_africa("saiml98")
+        assert self.value("Value a pension of 6000 a year from age 65 at 5%, South African tables") == \
+            pytest.approx(6000 * pension_annuity(males, 65, 0.05))
+        assert self.value("Life expectancy of a 30 year old man on SA85-90") == pytest.approx(
+            MortalityTable.from_south_africa("sa8590").life_expectancy(30))
+        exam = ai.ask("What is the life expectancy of a 45 year old man on AM92?")
+        assert exam.arguments["basis"] == "am92"
+        assert exam.value == pytest.approx(load_am92().ultimate.life_expectancy(45))
+        assert "not a basis for African lives" in exam.explain()
+
+    def test_investment_appraisal(self):
+        flows = Cashflows([0, 1, 2, 3], [-1000, 300, 400, 500])
+        answer = ai.ask("What is the NPV at 8% of cash flows of -1000, 300, 400, 500?")
+        assert answer.value == pytest.approx(flows.net_present_value(0.08))
+        text = answer.explain()
+        assert f"{flows.internal_rate_of_return():.2%}" in text and "v^t" in text
+        only_rate = ai.ask("What is the internal rate of return of cash flows -1000, 300, 400, 500?")
+        assert only_rate.value == pytest.approx(flows.internal_rate_of_return())
+        none = ai.ask("What is the NPV at 8%?")
+        assert none.kind == "need_more" and "I need the cash flows" in none.text
+
+    def test_ifrs17_premium_allocation(self):
+        group = PAAGroup(premiums_received=[1200, 0, 0, 0], acquisition_cash_flows=[180, 0, 0, 0],
+                         periods=["Q1", "Q2", "Q3", "Q4"])
+        rollforward = group.lrc_rollforward()
+        for quarter, months in zip(["Q1", "Q2", "Q3", "Q4"], [3, 6, 9, 12]):
+            answer = ai.ask(f"IFRS 17 PAA: premium of 1200 for a 12-month policy with "
+                            f"acquisition costs of 180. What is the LRC after {months} months?")
+            assert answer.value == pytest.approx(rollforward.loc[quarter, "closing"])
+        text = answer.explain()
+        assert "IFRS 17.B126(a)" in text and "liability for incurred claims is separate" in text
 
     def test_reserving(self):
         assert self.value("Chain ladder IBNR for the RAA triangle") == \
             pytest.approx(ChainLadder(load_raa()).total_ibnr)
+        working = ai.ask("Chain ladder IBNR for the RAA triangle").explain()
+        assert "origin years  10" in working and "For 1990: 2,063 / 0.112105 = 18,402" in working
+        assert "For Total" not in working
+        assert "The most recent origin year carries 31% of the reserve" in working
         mack = MackChainLadder(load_genins(), est_sigma="mack")
         answer = ai.ask("Mack standard error for GenIns")
         assert answer.value == pytest.approx(mack.total_mack_se)
@@ -262,18 +308,175 @@ class TestSolutionsAgreeWithTheLibrary:
         assert "j = (1 + i)^(1/12) - 1" in loan and "= 599.29" in loan
         assert "nominal rate convertible monthly" in loan and "606.64" in loan
         life = ai.ask("Probability that a 30 year old survives 20 years").explain()
-        assert "out of 100,000 at age 15" in life and "n_p_x = l_(x+n) / l_x" in life
+        assert "out of 100,000 at age 20" in life and "n_p_x = l_(x+n) / l_x" in life
+
+
+class TestPartsAndOwnData:
+    def test_splitting(self):
+        assert split_parts("What is the present value of 1000 due in 5 years at 10%?") == (
+            "", ["What is the present value of 1000 due in 5 years at 10%?"])
+        preamble, parts = split_parts("A man is aged 40. (a) What is his life expectancy? "
+                                      "(b) Chance he survives 20 years?")
+        assert preamble == "A man is aged 40."
+        assert parts == ["What is his life expectancy?", "Chance he survives 20 years?"]
+        preamble, parts = split_parts("A loan of 5000 runs 10 years. What is the repayment at "
+                                      "8%? What is it at 10%? Use monthly instalments.")
+        assert preamble == "A loan of 5000 runs 10 years." and len(parts) == 2
+        assert parts[1] == "What is it at 10%? Use monthly instalments."
+        assert len(split_parts("Find the present value of 100 in 5 years at 6% and what is "
+                               "the future value of 100 in 5 years at 6%?")[1]) == 2
+        # One question followed by a statement stays whole
+        assert len(split_parts("How much for life cover for someone aged 40? Use 5%.")[1]) == 1
+        assert len(split_parts("1. Present value of 10 in 2 years at 5%? 2. Convert 9 ZWL to ZiG")[1]) == 2
+
+    def test_each_part_is_answered_with_what_the_opening_gave(self):
+        answer = ai.ask("A man is aged 40. (a) What is his life expectancy? (b) What is the "
+                        "probability he survives 20 years? (c) What is the premium for a 10-year "
+                        "term assurance of 50000 at 6%?")
+        assert answer.kind == "parts" and answer.solved and answer.value is None
+        assert [part.solver for part in answer.parts] == [
+            "life_expectancy", "survival_probability", "term_assurance_premium"]
+        assert all(part.arguments["age"] == 40 for part in answer.parts)
+        assert "Taken from the opening of the question: the age." in answer.parts[1].notes
+        table = MortalityTable.from_zimbabwe_2023("male_assured_lives")
+        assert answer.parts[1].value == pytest.approx(table.npx(40, 20))
+        text = answer.explain()
+        assert "----- Part 1 -----" in text and "----- Part 3 -----" in text
+        assert "**Part 2**" in answer.to_markdown()
+
+    def test_two_unrelated_questions_in_one(self):
+        answer = ai.ask("What is the present value of 1000 due in 5 years at 10% and what is "
+                        "the monthly repayment on a loan of 50000 over 10 years at 8%?")
+        assert [part.solver for part in answer.parts] == ["present_value", "loan_repayment"]
+        assert answer.parts[0].value == pytest.approx(1000 / 1.1 ** 5)
+
+    def test_a_part_that_cannot_be_answered_says_why(self):
+        answer = ai.ask("(a) Present value of 1000 due in 5 years at 10%? (b) Value my pension.")
+        assert answer.parts[0].solved and answer.parts[1].kind == "need_more"
+        assert not answer.solved
+
+    def test_one_answer_for_each_triangle_named(self):
+        answer = ai.ask("Chain ladder reserve for RAA and GenIns")
+        assert answer.kind == "parts"
+        assert [part.arguments["triangle"] for part in answer.parts] == ["RAA", "GenIns"]
+        assert answer.parts[1].value == pytest.approx(ChainLadder(load_genins()).total_ibnr)
+
+    def test_own_triangle(self, tmp_path):
+        rows = [[100, 150, 170, 180], [110, 168, 190], [120, 180], [130]]
+        from actuneo.loss_reserving import Triangle
+        grid = pd.DataFrame(rows, index=[2021, 2022, 2023, 2024])
+        expected = ChainLadder(Triangle(grid)).total_ibnr
+        for data in (rows, grid, {"triangle": grid}, Triangle(grid)):
+            answer = ai.ask("What is the chain ladder reserve for my triangle?", data=data)
+            assert answer.arguments == {"triangle": "own"}
+            assert answer.value == pytest.approx(expected)
+            assert "The triangle is the data you passed." in answer.notes
+        path = tmp_path / "triangle.csv"
+        grid.rename_axis("origin").to_csv(path)
+        from_file = ai.ask("IBNR reserve?", data=str(path))
+        assert from_file.solver == "chain_ladder_reserve"
+        assert from_file.value == pytest.approx(expected)
+        assert ai.ask("How uncertain is that reserve?", data=rows).solver == "mack_standard_error"
+        # A named triangle still wins over the data passed
+        assert ai.ask("Chain ladder reserve for RAA", data=rows).arguments == {"triangle": "RAA"}
+        missing = ai.ask("Chain ladder reserve for my triangle")
+        assert missing.kind == "need_more" and "did not pass one" in missing.text
+
+    def test_own_mortality_table(self):
+        ages = np.arange(20, 111)
+        rates = np.minimum(0.0005 * 1.09 ** (ages - 20), 1.0)
+        rates[-1] = 1.0
+        frame = pd.DataFrame({"Age": ages, "qx": rates})
+        table = MortalityTable(ages, rates)
+        answer = ai.ask("What is the life expectancy at age 60?", data=frame)
+        assert answer.arguments["basis"] == "own"
+        assert answer.value == pytest.approx(table.life_expectancy(60))
+        assert "your own table" in answer.explain()
+        pension = ai.ask("Value a pension of 1000 a year from age 65 at 5%", data=table)
+        assert pension.value == pytest.approx(1000 * pension_annuity(table, 65, 0.05))
+        # Naming a basis overrides the table passed
+        named = ai.ask("Life expectancy at age 60 on the Zimbabwe tables", data=frame)
+        assert named.arguments["basis"] == "zimbabwe"
+
+    def test_own_cash_flows(self):
+        flows = [-5000, 1500, 1500, 1500, 1500]
+        expected = Cashflows(range(5), flows)
+        assert ai.ask("NPV at 10%?", data=flows).value == pytest.approx(
+            expected.net_present_value(0.10))
+        assert ai.ask("What is the IRR of this project?", data=pd.Series(flows)).value == \
+            pytest.approx(expected.internal_rate_of_return())
+
+    def test_data_is_recognised(self, tmp_path):
+        assert list(read_data(None)) == []
+        assert list(read_data([1, 2, 3])) == ["cashflows"]
+        assert list(read_data([[1, 2], [3]])) == ["triangle"]
+        assert list(read_data(pd.DataFrame({"age": [30, 31], "qx": [0.1, 1.0]}))) == ["table"]
+        assert list(read_data(pd.DataFrame({"flow": [-10, 6, 6]}))) == ["cashflows"]
+        both = read_data({"triangle": [[1, 2], [3]], "cashflows": [1, 2]})
+        assert set(both) == {"triangle", "cashflows"}
+        bad = ai.ask("Chain ladder reserve?", data=str(tmp_path / "absent.csv"))
+        assert bad.kind == "need_more" and "was not found" in bad.text
+
+
+class TestKnowledge:
+    def test_index_is_built_from_what_already_exists(self):
+        passages = knowledge.corpus()
+        sources = {passage.source.split(".")[0] if passage.source.startswith("actuneo")
+                   else passage.source for passage in passages}
+        assert {"README.md", "docs/status.rst", "docs/pensions.rst", "actuneo"} <= sources
+        assert len(passages) > 300
+        assert all(len(passage.text.split()) <= knowledge.MAX_WORDS + 1 for passage in passages)
+        assert not any(".ai." in passage.source for passage in passages)
+
+    def test_stored_documentation_is_up_to_date(self):
+        root = knowledge.Path(knowledge.__file__).resolve().parents[2]
+        if not (root / "docs" / "status.rst").exists():
+            pytest.skip("not a source checkout")
+        fresh = []
+        for name in knowledge.DOCUMENTS:
+            fresh.extend(knowledge.passages_from_document(root / name, name))
+        stored = knowledge._documentation()
+        assert [(p.title, p.text) for p in stored] == [(p.title, p.text) for p in fresh], \
+            "run actuneo.ai.knowledge.build_corpus_file() after changing the documentation"
+
+    @pytest.mark.parametrize("question, expected", [
+        ("How do I load a Zimbabwe mortality table?", "zimbabwe"),
+        ("What does ACTUNEO do for IFRS 17 PAA?", "actuneo.ifrs17"),
+        ("how do I compute bond duration", "duration"),
+        ("What are the limitations of the pensions module?", "pensions"),
+        ("how do I run a chain ladder on a triangle", "loss_reserving"),
+    ])
+    def test_retrieval_finds_the_relevant_passages(self, question, expected):
+        found = knowledge.retrieve(question, limit=4)
+        assert found and found[0][0] >= found[-1][0]
+        assert any(expected in (passage.source + passage.title).lower() for _, passage in found)
+
+    def test_nothing_relevant(self):
+        assert knowledge.retrieve("xyzzy plugh") == []
+
+    def test_without_a_model_the_passages_are_returned(self):
+        answer = ai.ask("What does ACTUNEO do for IFRS 17?")
+        assert answer.kind == "reference" and not answer.used_model and not answer.solved
+        assert "No language model is installed" in answer.text and answer.sources
+        assert "Passages of ACTUNEO's documentation it drew on" in answer.explain()
+        about = ai.ask("What is ACTUNEO?")
+        assert about.kind == "reference" and about.sources[0].source == "README.md"
 
 
 class FakeBackend:
-    """A stand-in for the language model that returns a scripted choice."""
+    """A stand-in for the language model that returns a scripted choice and reply."""
 
-    def __init__(self, name, arguments=None):
-        self.name, self.arguments, self.calls = name, arguments or {}, []
+    def __init__(self, name=None, arguments=None, reply="An actuary's answer."):
+        self.name, self.arguments, self.reply = name, arguments or {}, reply
+        self.calls, self.prompts = [], []
 
     def call_tools(self, prompt, tools, system=None, allow_none=True):
         self.calls.append([tool["name"] for tool in tools])
         return ai.ToolCall(self.name, dict(self.arguments))
+
+    def generate(self, prompt, system=None, max_tokens=None, temperature=0.2):
+        self.prompts.append((prompt, system))
+        return self.reply
 
 
 class TestWithTheModel:
@@ -284,7 +487,8 @@ class TestWithTheModel:
     def test_clear_questions_never_reach_the_model(self, monkeypatch):
         backend = self.use(monkeypatch, FakeBackend("bond_price"))
         answer = ai.ask("What is the monthly repayment on a loan of 50000 over 10 years at 8%?")
-        assert answer.solver == "loan_repayment" and backend.calls == [] and not answer.used_model
+        assert answer.solver == "loan_repayment" and not answer.used_model
+        assert backend.calls == [] and backend.prompts == []
 
     def test_the_model_chooses_when_the_wording_does_not(self, monkeypatch):
         backend = self.use(monkeypatch, FakeBackend("future_value"))
@@ -295,9 +499,30 @@ class TestWithTheModel:
         assert len(backend.calls) == 1 and len(backend.calls[0]) == len(SOLVERS)
         assert not ai.ask("I have 5000 and leave it for 12 years at 9%.", use_model=False).solved
 
-    def test_the_model_saying_none_is_respected(self, monkeypatch):
-        self.use(monkeypatch, FakeBackend(None))
-        assert ai.ask("What is the probability that it rains tomorrow?").kind == "unknown"
+    def test_questions_in_words_go_to_the_model_as_an_actuary(self, monkeypatch):
+        backend = self.use(monkeypatch, FakeBackend(reply="The PAA is a simplified model."))
+        answer = ai.ask("What does ACTUNEO do for IFRS 17?")
+        assert answer.kind == "explanation" and answer.used_model and not answer.solved
+        assert answer.text == "The PAA is a simplified model." and answer.sources
+        prompt, system = backend.prompts[0]
+        assert system == ACTUARY_PROMPT and "qualified actuary" in system
+        assert "Never invent figures" in system and "Do not do arithmetic" in system
+        assert prompt.startswith("Passages from ACTUNEO's documentation:\n[1] ")
+        assert answer.sources[0].text in prompt
+        assert prompt.endswith("Question: What does ACTUNEO do for IFRS 17?")
+        text = answer.explain()
+        assert "written by the language model, not calculated by ACTUNEO" in text
+        assert "Passages of ACTUNEO's documentation it drew on" in text
+        assert "*Written by the language model" in answer.to_markdown()
+        assert backend.calls == []          # no numbers, so no calculation was looked for
+
+    def test_general_questions_use_the_models_own_knowledge(self, monkeypatch):
+        backend = self.use(monkeypatch, FakeBackend(reply="An actuary measures risk."))
+        answer = ai.ask("Xyzzy plugh quux?")
+        assert answer.kind == "explanation" and answer.sources == []
+        assert "answer from your own actuarial knowledge" in backend.prompts[0][0]
+        part = ai.ask("(a) Present value of 1000 due in 5 years at 10%? (b) Why discount at all?")
+        assert [p.kind for p in part.parts] == ["solution", "explanation"]
 
     def test_a_number_from_the_model_must_be_in_the_question(self, monkeypatch):
         question = "Loan repayment: I borrowed 9000, the rate is 10%, it runs a decade (10)."
@@ -309,13 +534,18 @@ class TestWithTheModel:
         refused = ai.ask(question)
         assert refused.kind == "need_more" and "the term of the loan" in refused.text
 
-    def test_a_failing_model_falls_back_to_the_rules(self, monkeypatch):
+    def test_a_failing_model_falls_back(self, monkeypatch):
         class Broken:
             def call_tools(self, *args, **kwargs):
                 raise ai.BackendError("model file not found")
+
+            def generate(self, *args, **kwargs):
+                raise ai.BackendError("model file not found")
         self.use(monkeypatch, Broken())
         answer = ai.ask("Tell me about 5000 over 12 years")
-        assert answer.kind == "unknown" and "could not be used" in " ".join(answer.notes)
+        assert not answer.solved and "could not be used" in " ".join(answer.notes)
+        words = ai.ask("What does ACTUNEO do for IFRS 17?")
+        assert words.kind == "reference" and "could not be used" in " ".join(words.notes)
 
 
 class TestCommandLine:
@@ -328,6 +558,12 @@ class TestCommandLine:
                         "in", "5", "years", "at", "10%?", "--no-model") == 0
         printed = capsys.readouterr().out
         assert "Present value of a single payment" in printed and "620.92" in printed
+
+    def test_ask_with_a_data_file(self, tmp_path, capsys):
+        path = tmp_path / "flows.csv"
+        pd.DataFrame({"flow": [-1000, 300, 400, 500]}).to_csv(path, index=False)
+        assert self.run("ask", "NPV at 8%?", "--data", str(path), "--no-model") == 0
+        assert "NPV = 17.63" in capsys.readouterr().out
 
     def test_topics(self, capsys):
         assert self.run("topics") == 0

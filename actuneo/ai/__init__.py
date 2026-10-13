@@ -19,7 +19,7 @@ This module supplies the model only. Nothing in ACTUNEO's calculations uses
 it, and a language model's answers about actuarial work must be checked.
 """
 
-from .assistant import Answer, ask, topics
+from .assistant import ACTUARY_PROMPT, Answer, ask, read_data, topics
 from .backends import (
     AnthropicBackend,
     Backend,
