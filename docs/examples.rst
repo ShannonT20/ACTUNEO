@@ -177,6 +177,50 @@ The calendar model does better here because it is told, in effect, that
 recent inflation will continue. If inflation fell back, it would overstate
 the reserve. The benchmark describes the simulated portfolio only.
 
+Example 8: Valuing a Defined Benefit Pension Scheme
+---------------------------------------------------
+
+A scheme that pays one sixtieth of final salary for each year of service from
+age 60, with half continuing to a spouse. The valuation gives the funding
+level and the contribution rate. :doc:`pensions` works through a fuller case
+and explains the method.
+
+.. code-block:: python
+
+   from actuneo.mortality import MortalityTable
+   from actuneo.pensions import (
+       DBValuation, DefinedBenefitScheme, ValuationBasis, ServiceTable,
+   )
+
+   in_service = MortalityTable.from_south_africa("sa8590")
+   retired = MortalityTable.from_south_africa("saiml98")
+
+   scheme = DefinedBenefitScheme(accrual_rate=1 / 60, normal_retirement_age=60,
+                                 final_average_years=3, spouse_fraction=0.5)
+   basis = ValuationBasis(
+       discount_rate=0.10,
+       mortality_post=retired,
+       service_table=ServiceTable.from_mortality(in_service, 60, start_age=20,
+                                                 withdrawal=0.04),
+       salary_scale=0.07,
+       pension_increase=0.04,
+       proportion_married=0.8,
+       spouse_age_difference=4,
+   )
+   actives = [
+       {"age": 30, "service": 5, "salary": 15_000},
+       {"age": 45, "service": 18, "salary": 28_000},
+       {"age": 56, "service": 30, "salary": 40_000},
+   ]
+   pensioners = [{"age": 66, "pension": 9_000}]
+
+   valuation = DBValuation(scheme, basis, actives, pensioners, assets=300_000)
+   print(valuation.summary().round(3))
+   print(valuation.contribution_rate(recovery_period=10).round(4))
+
+The result depends on the assumptions, which are for the actuary to choose.
+``valuation.sensitivities()`` shows how far it moves with each.
+
 References
 ----------
 

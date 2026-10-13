@@ -3,6 +3,31 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
+Unreleased
+----------
+
+Added
+~~~~~
+
+* ``actuneo.pensions``, in place of the placeholder:
+
+  * ``DBValuation``: actuarial valuation of a defined benefit scheme, with liabilities for
+    active members, deferred pensioners and pensioners, the funding level, the contribution
+    rate with deficit recovery, sensitivities and the duration of the liabilities
+  * Funding methods: projected unit, current unit, entry age, attained age and aggregate
+  * ``DefinedBenefitScheme`` and ``ValuationBasis``; ``ServiceTable`` with withdrawal, death,
+    ill-health and early retirement; ``SalaryScale`` with a promotional scale
+  * ``pension_annuity``: annuity factors with increases, any payment frequency, a guarantee
+    period and a spouse's pension
+  * ``IAS19Period``: defined benefit cost in profit or loss, remeasurements in other
+    comprehensive income, the asset ceiling and the reconciliations
+  * ``DCProjection`` and ``DCFundValuation`` for defined contribution accounts and funds
+  * ``analysis_of_surplus``
+  * ``actuneo.pensions.zimbabwe``: dissolution reserves and the leavers' share of surplus
+    under the Pensions and Provident Funds Act [Chapter 24:32], and IPEC's minimum funding
+    level
+* Documentation: a guide to pension scheme valuation with the method and how it was checked
+
 Version 0.4.1 (2026-10-12)
 --------------------------
 

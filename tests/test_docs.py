@@ -27,6 +27,7 @@ def _markdown_blocks(text):
     ("docs/quickstart.rst", _rst_blocks),
     ("docs/examples.rst", _rst_blocks),
     ("docs/ifrs17_case_study.rst", _rst_blocks),
+    ("docs/pensions.rst", _rst_blocks),
 ])
 def test_documentation_examples_run(path, extract, capsys):
     blocks = extract((ROOT / path).read_text(encoding="utf-8"))
