@@ -365,7 +365,8 @@ Pensions
   to be filled by the user.
 * A table that stops while mortality is below 1 is closed by assuming that
   nobody survives its last year of age. For a table ending at 100 this
-  understates annuities at high ages.
+  understates annuities at high ages. A warning is given when more than
+  1 life in 1,000 is affected.
 * The spouse's pension assumes independent lives, one age difference for
   everyone and a single proportion married applied at the member's death.
   Children's pensions and remarriage are not modelled.

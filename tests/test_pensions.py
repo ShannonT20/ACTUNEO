@@ -158,6 +158,18 @@ class TestPensionAnnuity:
         with pytest.warns(UserWarning, match="ends at age 100"):
             pension_annuity(open_mortality_table, 70, 0.05)
 
+    def test_no_warning_when_the_cut_off_is_immaterial(self):
+        import warnings
+        annuitants = MortalityTable.from_south_africa("saiml98")
+        assert not annuitants.is_closed
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            factor = pension_annuity(annuitants, 60, 0.05)
+        assert 10 < factor < 14
+        # The same table warns for a life already close to its last age
+        with pytest.warns(UserWarning, match="ends at age 110"):
+            pension_annuity(annuitants, 105, 0.05)
+
     def test_invalid_arguments(self, table):
         with pytest.raises(ValueError, match="spouse_age"):
             pension_annuity(table, 65, 0.05, spouse_fraction=0.5)

@@ -19,6 +19,10 @@ import numpy as np
 
 from ..mortality import MortalityTable
 
+#: Proportion of lives surviving beyond the end of a table above which closing
+#: the table is reported with a warning
+CUT_OFF_WARNING = 0.001
+
 
 def survival_probabilities(table: MortalityTable, age: float, times) -> np.ndarray:
     """
@@ -32,7 +36,8 @@ def survival_probabilities(table: MortalityTable, age: float, times) -> np.ndarr
     Returns:
         Array of survival probabilities. A table that stops while ``qx`` is
         still below 1 is closed by assuming that nobody survives the last
-        year of age, with a warning.
+        year of age. A warning is given when that removes more than 1 in
+        1,000 of the lives.
     """
     times = np.atleast_1d(np.asarray(times, dtype=float))
     if np.any(times < 0):
@@ -42,17 +47,19 @@ def survival_probabilities(table: MortalityTable, age: float, times) -> np.ndarr
             f"age {age} is outside the ages of '{table.name}' "
             f"({table.min_age} to {table.max_age})"
         )
-    if not table.is_closed:
-        warnings.warn(
-            f"Mortality table '{table.name}' ends at age {table.max_age} with qx below 1. "
-            "It has been closed by assuming that nobody survives that year of age.",
-            stacklevel=3,
-        )
     grid = np.append(table.ages.astype(float), table.max_age + 1.0)
     lives = np.append(table.lx_values, 0.0)
     start = np.interp(age, grid, lives)
     if start <= 0:
         return np.zeros_like(times)
+    cut_off = table.lx_values[-1] * table.px_values[-1] / start
+    if cut_off > CUT_OFF_WARNING:
+        warnings.warn(
+            f"Mortality table '{table.name}' ends at age {table.max_age} with qx below 1. "
+            f"It has been closed by assuming that nobody survives that year of age, which "
+            f"removes {cut_off:.1%} of the lives now aged {age:g}.",
+            stacklevel=3,
+        )
     return np.interp(age + times, grid, lives, right=0.0) / start
 
 
