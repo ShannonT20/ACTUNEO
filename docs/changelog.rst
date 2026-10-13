@@ -37,6 +37,13 @@ Added
   present value and internal rate of return and the IFRS 17 premium allocation approach.
   Missing information is asked for instead of guessed. Needs no optional packages
 
+  * Each answer states what was taken from the question, what was assumed because it was
+    not stated, and any condition mentioned that the calculation does not allow for
+  * Loan repayments on a reducing balance (nominal rate), an effective rate or a flat rate;
+    pensions paid monthly, quarterly, half-yearly or yearly, in advance or in arrears
+  * A capable model (about 4B parameters or more, or a hosted one) reads the question
+    first: what is asked, the conditions stated, and conventions put in the user's own
+    words. Smaller models are not trusted to, having changed answers when tried
   * A question in several parts is split and each part answered
   * Your own data can be passed: a claims triangle, a mortality table or yearly cash flows
   * Mortality questions use the Zimbabwe 2023 tables unless another basis is named

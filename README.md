@@ -177,6 +177,13 @@ life, survival probabilities, pensions for life, term assurance premiums, chain 
 reserves, Mack's standard error, the IFRS 17 premium allocation approach, retirement fund
 projections and ZWL to ZiG.
 
+- **It tells you what it understood.** Every answer lists what was taken from your
+  question, what was not stated and so assumed, and anything you mentioned that the
+  calculation does not allow for. A loan "at 8% on a reducing balance", "at 8% flat rate"
+  and "at 8%" are three different repayments, so say which.
+- **A capable model reads the question itself.** With a model of about 4B parameters or
+  more, or a hosted one, the model first says what is asked and decides conventions put in
+  your own words. A smaller model is not trusted to do this.
 - **Several parts.** "A man is aged 40. (a) What is his life expectancy? (b) What is the
   probability he survives 20 years?" is split and each part answered.
 - **Your own data.** `ai.ask("Chain ladder reserve for my triangle?", data=my_triangle)`

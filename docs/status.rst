@@ -405,6 +405,23 @@ AI module
   (stated in the answer's assumptions). It is not a general problem solver.
   A question in several parts is split and each part answered on its own:
   a part that depends on the answer to an earlier part cannot be done.
+* **Whether the model "understands" a question depends on the model.** A
+  capable model is asked to read the question first and to decide
+  conventions stated in the user's own words. That path is tested with
+  stand-ins only: no model of that size has been run, so how well it reads
+  real questions is unknown. The 0.6B model was tried in that role and was
+  not fit for it: it reported conditions that were not in the question,
+  read a rate as "reducing balance" and a pension as "paid once a year" when
+  neither was stated, and missed a flat-rate loan described in other words.
+  It is therefore not allowed to interpret, and questions are then read by
+  fixed rules, which recognise standard terms only.
+* The check for conditions that a calculation ignores is a fixed list of
+  wording (tax, inflation, a guarantee, a second life, a balloon payment and
+  so on). A condition outside the list is still ignored without notice.
+* A loan rate is taken as an effective annual rate unless the question says
+  otherwise, which is the convention of actuarial textbooks. Banks usually
+  quote a nominal rate on the reducing balance. The answer says which was
+  used and shows the other.
 * **Answers in words are written by the language model and can be wrong.**
   The model is given matching passages of ACTUNEO's documentation and told
   to answer as an actuary without inventing figures, but nothing checks what
