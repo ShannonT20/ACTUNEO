@@ -43,6 +43,7 @@ from .solutions import Solution, percent
 from .solvers import SOLVERS, Param, Solver
 
 RULE_SCORE = 2          # weight of matched phrases needed to choose without the model
+STRONG_MODEL_BYTES = 2_000_000_000     # a local model below this is not trusted to interpret
 DATA_BOOST = 3          # added to a calculation that can use the data passed
 
 #: How the model is told to speak when it answers in words
@@ -490,6 +491,7 @@ class Answer:
     sources: List[knowledge.Passage] = field(default_factory=list)
     parts: List["Answer"] = field(default_factory=list)
     used_model: bool = False
+    understanding: Optional[Dict[str, Any]] = None
 
     @property
     def solved(self) -> bool:
@@ -523,6 +525,13 @@ class Answer:
                 out.append("")
             return "\n".join(out).rstrip()
         out = [f"Question: {self.question}", ""]
+        if self.understanding:
+            out.append("What the language model understood")
+            if self.understanding.get("asks_for"):
+                out.append(f"  Asked for: {self.understanding['asks_for']}")
+            for condition in self.understanding.get("conditions", []):
+                out.append(f"  - {condition}")
+            out.append("")
         if self.notes:
             out.append("How the question was read")
             out.extend(f"  - {note}" for note in self.notes)
@@ -544,6 +553,12 @@ class Answer:
                 out.extend([f"---", f"**Part {index}**", "", part.to_markdown(), ""])
             return "\n".join(out)
         out = [f"> {self.question}", ""]
+        if self.understanding:
+            out.extend(["*What the language model understood:*", ""])
+            if self.understanding.get("asks_for"):
+                out.append(f"- Asked for: {self.understanding['asks_for']}")
+            out.extend(f"- {condition}" for condition in self.understanding.get("conditions", []))
+            out.append("")
         if self.notes:
             out.extend(["*How the question was read:*", ""])
             out.extend(f"- {note}" for note in self.notes)
@@ -575,6 +590,32 @@ def _backend(use_model: bool):
         return get_backend()
     except Exception:           # nothing installed or configured
         return None
+
+
+def model_reads_questions(backend) -> bool:
+    """
+    Whether the model is trusted to read a question: to say what it asks,
+    and to decide conventions that the question states in its own words.
+
+    A hosted model is trusted, and a local model of about 4 billion
+    parameters or more (a file of 2 GB or more). Smaller local models are
+    not: when tried, the 0.6 billion parameter model reported conditions
+    that the question did not state and changed answers because of them.
+    A backend can set ``reads_questions`` to say for itself.
+    """
+    if backend is None:
+        return False
+    declared = getattr(backend, "reads_questions", None)
+    if declared is not None:
+        return bool(declared)
+    if getattr(backend, "name", "") != "local":
+        return True
+    try:
+        from .config import load_config
+        size = (load_config().get("local") or {}).get("model", {}).get("size_bytes", 0)
+    except Exception:
+        size = 0
+    return size >= STRONG_MODEL_BYTES
 
 
 def _choose_with_model(backend, text: str, candidates: List[Solver]):
@@ -652,9 +693,145 @@ def _answer_in_words(question: str, backend, notes: List[str]) -> Answer:
 
 
 # ----------------------------------------------------------------------
+# Understanding the question
+# ----------------------------------------------------------------------
+#: Wording that changes a calculation. If the question uses it and the
+#: calculation chosen does not allow for it, the answer says so.
+CONDITIONS = (
+    (r"reducing[- ]balances?|diminishing balance|declining balance|flat rate|simple interest|"
+     r"compound\w*|convertible|\bnominal\b|\beffective\b|\bapr\b", "how the rate of interest is quoted"),
+    (r"\b(?:monthly|quarterly|weekly|fortnightly|half[- ]yearly|semi[- ]annual\w*|annually|yearly|"
+     r"daily)\b", "how often payments are made or interest is added"),
+    (r"in advance|in arrears|start of each|beginning of each|end of each", "when payments fall"),
+    (r"\btax\b|net of tax|after tax", "tax"),
+    (r"inflation|index[- ]linked|escalat\w+|increas\w+ (?:at|by)|real terms", "increases or inflation"),
+    (r"joint life|last survivor|spouse'?s? pension|widow'?s pension|reversion\w*", "a second life"),
+    (r"guarantee\w*", "a guarantee"),
+    (r"\bselect\b", "select mortality"),
+    (r"\bdeferred\b|deferment", "deferment"),
+    (r"\bexpenses?\b|\bloading\b|\bcommission\b", "expenses"),
+    (r"balloon|residual value|deposit|down payment|grace period|moratorium", "the shape of the loan"),
+    (r"tail factor|\binflation[- ]adjusted\b|bornhuetter|cape cod", "the reserving method"),
+    (r"\bsmoker|non[- ]smoker|impaired|\bextra mortality\b", "the class of life"),
+)
+
+
+def unhandled_conditions(solver: Solver, text: str) -> List[str]:
+    """Wording in the question that affects the calculation but that the solver ignores."""
+    low = text.lower()
+    notes, seen = [], set()
+    for pattern, meaning in CONDITIONS:
+        for match in re.finditer(pattern, low):
+            phrase = match.group(0)
+            if phrase in seen or any(re.fullmatch(handled, phrase) for handled in solver.handles):
+                continue
+            seen.add(phrase)
+            notes.append(f'You mentioned "{phrase}" ({meaning}). This calculation does not allow '
+                         "for it, so the answer ignores it.")
+    return notes
+
+
+_READING_TOOL = {
+    "name": "reading",
+    "description": "Record what the question asks for and every condition it states",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "asks_for": {"type": "string",
+                         "description": "One sentence: the quantity the user wants worked out"},
+            "conditions": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Each condition, convention or detail that the question itself "
+                               "states and that affects the calculation, in the question's "
+                               "own words, a few words each. Empty if it states none."},
+        },
+        "required": ["asks_for", "conditions"],
+    },
+}
+_READING_PROMPT = (
+    "You are an actuary reading a client's question before any calculation is done. Record "
+    "exactly what is being asked for and every condition the question states. Use only what "
+    "the question says: do not calculate, do not answer, and do not add conditions that are "
+    "not stated.")
+
+
+def _understand(backend, question: str) -> Optional[Dict[str, Any]]:
+    """The model's reading of the question: what is asked and the conditions stated."""
+    try:
+        call = backend.call_tools(question, [_READING_TOOL], system=_READING_PROMPT,
+                                  allow_none=False)
+    except Exception:
+        return None
+    asks = str(call.arguments.get("asks_for", "")).strip()
+    # Keep a condition only if its words are in the question: a small model
+    # will otherwise report conditions that were never stated
+    said = set(knowledge._terms(question))
+    conditions = []
+    for item in call.arguments.get("conditions") or []:
+        words = set(knowledge._terms(str(item)))
+        if words and len(words & said) >= max(1, (len(words) + 1) // 2) \
+                and str(item).strip() not in conditions:
+            conditions.append(str(item).strip())
+    return {"asks_for": asks, "conditions": conditions[:8]} if asks or conditions else None
+
+
+def _interpret_conventions(backend, solver: Solver, question: str,
+                           understanding: Optional[Dict[str, Any]],
+                           params: List[Param]) -> Dict[str, Any]:
+    """
+    Let the model decide which convention the question states, for the
+    conventions that the fixed wording did not settle. It must choose from
+    the solver's own options or say that the question does not state one.
+    """
+    properties, lookup = {}, {}
+    for param in params:
+        options = {str(value): value for value in param.choices}
+        lookup[param.name] = options
+        meanings = "; ".join(f"{value} = {(param.names or {}).get(value, value)}"
+                             for value in param.choices)
+        properties[param.name] = {
+            "type": "string", "enum": list(options) + ["not_stated"],
+            "description": f"{param.label}. {meanings}; not_stated = the question does not say"}
+    tool = {"name": "conventions",
+            "description": f"Which conventions the question states for: {solver.title}",
+            "parameters": {"type": "object", "properties": properties,
+                           "required": list(properties)}}
+    noticed = "; ".join((understanding or {}).get("conditions", []))
+    prompt = question + (f"\nConditions noticed: {noticed}" if noticed else "")
+    try:
+        call = backend.call_tools(
+            prompt, [tool], allow_none=False,
+            system="You are an actuary. For each convention, choose the option the question "
+                   "states. Choose not_stated unless the question clearly says it.")
+    except Exception:
+        return {}
+    # A reading that only repeats the default tells us nothing: the question
+    # did not state it, and it is reported as an assumption instead
+    defaults = {param.name: param.default for param in params}
+    chosen = {}
+    for name, options in lookup.items():
+        value = call.arguments.get(name)
+        if value in options and options[value] != defaults[name]:
+            chosen[name] = options[value]
+    return chosen
+
+
+def _show(param: Param, value: Any) -> str:
+    """A value in words, for telling the user how the question was read."""
+    if param.kind == "choice":
+        return str((param.names or {}).get(value, value))
+    if param.kind == "rate":
+        return percent(value)
+    if param.kind in ("age", "years"):
+        return f"{value:g}"
+    return f"{value:,.10g}"
+
+
+# ----------------------------------------------------------------------
 # Answering
 # ----------------------------------------------------------------------
-def _ask_one(question: str, context: str, data: Dict[str, Any], backend) -> Answer:
+def _ask_one(question: str, context: str, data: Dict[str, Any], backend,
+             reads: bool = False) -> Answer:
     """Answer one question, or one part of a question."""
     if _GREETING.match(question):
         return Answer(question, "greeting",
@@ -670,12 +847,18 @@ def _ask_one(question: str, context: str, data: Dict[str, Any], backend) -> Answ
     clear = bool(ranked) and ranked[0][0] >= RULE_SCORE \
         and (len(ranked) == 1 or ranked[0][0] > ranked[1][0])
     has_numbers = has_quantities(full_text) or bool(data)
+    # The model reads the question first: what is asked, and every condition stated
+    understanding = _understand(backend, f"{context} {question}".strip()) \
+        if reads and has_numbers else None
     if clear:
         solver = ranked[0][1]
     elif backend is not None and has_numbers:
         candidates = [s for _, s in ranked[:6]] or list(SOLVERS.values())
         try:
-            call = _choose_with_model(backend, text, candidates)
+            asked = text
+            if understanding and understanding.get("asks_for"):
+                asked = f"{text}\n(The user wants: {understanding['asks_for']})"
+            call = _choose_with_model(backend, asked, candidates)
             if call.name in SOLVERS:
                 solver, model_arguments, used_model = SOLVERS[call.name], call.arguments, True
         except Exception as problem:
@@ -743,8 +926,19 @@ def _ask_one(question: str, context: str, data: Dict[str, Any], backend) -> Answ
                       f"This looks like: {solver.title}.\nTo work it out I also need: {needed}."
                       f'\n\nFor example: "{solver.example}"',
                       solver=solver.name, arguments=found, notes=read_notes,
-                      used_model=used_model)
+                      used_model=used_model, understanding=understanding)
 
+    # Conventions the fixed wording did not settle: the model decides from its reading
+    open_conventions = [p for p in solver.params
+                        if p.kind == "choice" and p.interpret and p.name not in found]
+    interpreted: Dict[str, Any] = {}
+    if open_conventions and reads:
+        interpreted = _interpret_conventions(backend, solver, f"{context} {question}".strip(),
+                                             understanding, open_conventions)
+        found.update(interpreted)
+        used_model = used_model or bool(interpreted)
+
+    stated = {name for name in found}
     for param in solver.params:
         if param.name in found:
             value = found[param.name]
@@ -759,9 +953,28 @@ def _ask_one(question: str, context: str, data: Dict[str, Any], backend) -> Answ
         elif not param.required:
             found[param.name] = param.default
     how = ("chosen by the language model from your wording. Check that it is the one you "
-           "meant." if used_model and not clear else "recognised from your wording.")
+           "meant." if not clear else "recognised from your wording.")
     notes.append(f"Calculation: {solver.title}, {how}")
+    by_name = {param.name: param for param in solver.params}
+    taken = [f"{by_name[name].label} = {_show(by_name[name], found[name])}"
+             for name in by_name if name in stated and name not in interpreted
+             and found[name] not in ("own", None)]
+    if taken:
+        notes.append("Taken from your question: " + "; ".join(taken) + ".")
+    for name, value in interpreted.items():
+        notes.append(f"The language model read {by_name[name].label} as: "
+                     f"{_show(by_name[name], value)}. Check it.")
+    assumed = [f"{by_name[name].label} = {_show(by_name[name], found[name])}"
+               for name in by_name if name not in stated and found.get(name) is not None]
+    if assumed:
+        notes.append("Not stated, so assumed: " + "; ".join(assumed) + ". Say otherwise in "
+                     "the question to change it.")
     notes.extend(read_notes)
+    notes.extend(unhandled_conditions(solver, full_text))
+    if open_conventions and backend is not None and not reads:
+        notes.append("The installed language model is too small to be trusted to interpret "
+                     "your wording, so only standard terms were recognised. A larger model "
+                     "(actuneo-ai setup --model small) or a hosted one reads the question itself.")
 
     # One answer for each value of a choice the question names more than once
     variants = [dict(found)]
@@ -777,16 +990,19 @@ def _ask_one(question: str, context: str, data: Dict[str, Any], backend) -> Answ
                 else solver.solve(**arguments)
         except (ValueError, KeyError) as problem:
             answers.append(Answer(question, "need_more", str(problem), solver=solver.name,
-                                  arguments=arguments, notes=notes, used_model=used_model))
+                                  arguments=arguments, notes=notes, used_model=used_model,
+                                  understanding=understanding))
             continue
         answers.append(Answer(question, "solution", solution=solution, solver=solver.name,
-                              arguments=arguments, notes=notes, used_model=used_model))
+                              arguments=arguments, notes=notes, used_model=used_model,
+                              understanding=understanding))
     if len(answers) == 1:
         return answers[0]
     return Answer(question, "parts", parts=answers, used_model=used_model)
 
 
-def ask(question: str, data: Any = None, use_model: bool = True) -> Answer:
+def ask(question: str, data: Any = None, use_model: bool = True,
+        model_reads: Optional[bool] = None) -> Answer:
     """
     Answer a question: a calculation with its working, or a question in words.
 
@@ -798,6 +1014,12 @@ def ask(question: str, data: Any = None, use_model: bool = True) -> Answer:
             these. See :func:`read_data`.
         use_model: Let the installed language model help. With False, only
             the fixed rules and ACTUNEO's documentation are used.
+        model_reads: Let the model read the question first: say what it
+            asks, list the conditions it states, and decide conventions
+            (such as how a rate is quoted) that are put in other words than
+            the standard ones. By default this is on for a model capable of
+            it and off for a small one: see :func:`model_reads_questions`.
+            The numbers are always checked against the question by rule.
 
     Returns:
         An :class:`Answer`. In a notebook it displays itself; elsewhere
@@ -814,10 +1036,12 @@ def ask(question: str, data: Any = None, use_model: bool = True) -> Answer:
                       "years, columns development years), a mortality table with columns age "
                       "and qx, or a list of yearly cash flows.")
     backend = _backend(use_model)
+    reads = model_reads_questions(backend) if model_reads is None \
+        else bool(model_reads and backend is not None)
     preamble, parts = split_parts(question)
     if len(parts) == 1:
-        return _ask_one(parts[0] if not preamble else question, "", own, backend)
-    answers = [_ask_one(part, preamble, own, backend) for part in parts]
+        return _ask_one(parts[0] if not preamble else question, "", own, backend, reads)
+    answers = [_ask_one(part, preamble, own, backend, reads) for part in parts]
     flattened: List[Answer] = []
     for answer in answers:
         flattened.extend(answer.parts or [answer])

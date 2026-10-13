@@ -182,6 +182,59 @@ class TestSolutionsAgreeWithTheLibrary:
         assert arrears == pytest.approx(1000 * (1 - 1.06 ** -10) / 0.06)
         assert advance == pytest.approx(arrears * 1.06)
 
+    def test_loan_conventions(self):
+        level = 50000 * (0.08 / 12) / (1 - (1 + 0.08 / 12) ** -120)
+        for wording in ["8% reducing balances", "8% on a reducing balance", "8% compounded monthly",
+                        "8% nominal", "8% convertible monthly", "8% APR"]:
+            answer = ai.ask(f"What is the monthly repayment on a loan of 50,000 over 10 years at {wording}?")
+            assert answer.arguments["interest_type"] == "nominal", wording
+            assert answer.value == pytest.approx(level)
+        text = answer.explain()
+        assert "j = i / 12" in text and "= 606.64" in text and "reducing-balance loan" in text
+        for wording in ["8%", "8% effective", "8% compound interest"]:
+            answer = ai.ask(f"Monthly repayment on a loan of 50,000 over 10 years at {wording}?")
+            assert answer.value == pytest.approx(Loan(50000, 0.08, 10, payments_per_year=12).payment)
+        assert "instalment is 606.64" in answer.explain()     # the other convention is shown
+        flat = ai.ask("Monthly repayment on a loan of 50,000 over 10 years at 8% flat rate?")
+        assert flat.value == pytest.approx((50000 + 50000 * 0.08 * 10) / 120)
+        working = flat.explain()
+        assert "I = L x i x years" in working and "nominal annual rate = 12 x j = 13.12%" in working
+        # The rate found for the flat loan does repay it
+        j = 0.1312 / 12
+        assert 750 * (1 - (1 + j) ** -120) / j == pytest.approx(50000, rel=2e-3)
+
+    def test_what_was_read_assumed_and_ignored_is_reported(self):
+        plain = ai.ask("What is the monthly repayment on a loan of 50,000 over 10 years at 8%?")
+        notes = " ".join(plain.notes)
+        assert "Taken from your question: the amount borrowed = 50,000; the interest rate = 8%; " \
+               "the term of the loan in years = 10." in notes
+        assert "Not stated, so assumed: how the interest rate is quoted = an effective annual " \
+               "rate, compounded once a year. Say otherwise" in notes
+        balloon = ai.ask("Monthly repayment on a loan of 50,000 over 10 years at 8% reducing "
+                         "balance with a balloon payment and a deposit, net of tax")
+        ignored = [note for note in balloon.notes if "does not allow for it" in note]
+        assert len(ignored) == 3 and any('"balloon" (the shape of the loan)' in n for n in ignored)
+        assert any('"net of tax" (tax)' in note for note in ignored)
+        assert not any("reducing balance" in note for note in ignored)
+        pension = ai.ask("Value a pension of 6000 a year from age 65 at 5% interest.")
+        assumed = next(note for note in pension.notes if note.startswith("Not stated"))
+        for expected in ["the sex = male", "the mortality basis = the Zimbabwe 2023 tables",
+                         "how often the pension is paid = monthly", "in advance"]:
+            assert expected in assumed
+        joint = ai.ask("Value a guaranteed joint life pension of 6000 a year from age 65 at 5%")
+        assert sum("does not allow for it" in note for note in joint.notes) == 2
+
+    def test_pension_frequency_and_timing(self):
+        males = MortalityTable.from_south_africa("saiml98")
+        yearly = ai.ask("Value a pension of 6000 a year from age 65 at 5%, paid annually in "
+                        "arrears, South African tables")
+        assert yearly.arguments["payment_frequency"] == 1 and yearly.arguments["timing"] == "arrears"
+        assert yearly.value == pytest.approx(
+            6000 * pension_annuity(males, 65, 0.05, frequency=1, timing="arrears"))
+        quarterly = ai.ask("Value a pension of 6000 a year from age 65 at 5%, paid quarterly, "
+                           "South African tables")
+        assert quarterly.value == pytest.approx(6000 * pension_annuity(males, 65, 0.05, frequency=4))
+
     def test_loan_and_bond(self):
         assert self.value("Monthly repayment on a loan of 50000 over 10 years at 8%") == \
             pytest.approx(Loan(50000, 0.08, 10, payments_per_year=12).payment)
@@ -306,7 +359,7 @@ class TestSolutionsAgreeWithTheLibrary:
             assert line in text
         loan = ai.ask("Monthly repayment on a loan of 50000 over 10 years at 8%").explain()
         assert "j = (1 + i)^(1/12) - 1" in loan and "= 599.29" in loan
-        assert "nominal rate convertible monthly" in loan and "606.64" in loan
+        assert "nominal rate charged monthly on the reducing balance" in loan and "606.64" in loan
         life = ai.ask("Probability that a 30 year old survives 20 years").explain()
         assert "out of 100,000 at age 20" in life and "n_p_x = l_(x+n) / l_x" in life
 
@@ -466,6 +519,8 @@ class TestKnowledge:
 class FakeBackend:
     """A stand-in for the language model that returns a scripted choice and reply."""
 
+    reads_questions = False     # a small model: not trusted to interpret wording
+
     def __init__(self, name=None, arguments=None, reply="An actuary's answer."):
         self.name, self.arguments, self.reply = name, arguments or {}, reply
         self.calls, self.prompts = [], []
@@ -477,6 +532,26 @@ class FakeBackend:
     def generate(self, prompt, system=None, max_tokens=None, temperature=0.2):
         self.prompts.append((prompt, system))
         return self.reply
+
+
+class ReadingBackend(FakeBackend):
+    """A stand-in for a capable model: it reads the question and decides conventions."""
+    reads_questions = True
+
+    def __init__(self, reading, conventions=None, choice=None):
+        super().__init__(choice)
+        self.reading, self.conventions = reading, conventions or {}
+
+    def call_tools(self, prompt, tools, system=None, allow_none=True):
+        self.calls.append([tool["name"] for tool in tools])
+        self.prompts.append((prompt, system))
+        if tools[0]["name"] == "reading":
+            return ai.ToolCall("reading", dict(self.reading))
+        if tools[0]["name"] == "conventions":
+            self.offered = tools[0]["parameters"]["properties"]
+            return ai.ToolCall("conventions", dict(self.conventions))
+        return ai.ToolCall(self.name, {})
+
 
 
 class TestWithTheModel:
@@ -523,6 +598,72 @@ class TestWithTheModel:
         assert "answer from your own actuarial knowledge" in backend.prompts[0][0]
         part = ai.ask("(a) Present value of 1000 due in 5 years at 10%? (b) Why discount at all?")
         assert [p.kind for p in part.parts] == ["solution", "explanation"]
+
+    def test_a_capable_model_reads_the_question_first(self, monkeypatch):
+        backend = self.use(monkeypatch, ReadingBackend(
+            {"asks_for": "The level monthly instalment on the loan",
+             "conditions": ["8% interest is charged each month on what I still owe",
+                            "female life", "paid from the moon"]},
+            {"interest_type": "nominal"}))
+        answer = ai.ask("What is the monthly repayment on a loan of 50,000 over 10 years where "
+                        "8% interest is charged each month on what I still owe?")
+        assert backend.calls == [["reading"], ["conventions"]]
+        assert answer.solved and answer.used_model
+        assert answer.arguments["interest_type"] == "nominal"
+        assert answer.value == pytest.approx(50000 * (0.08 / 12) / (1 - (1 + 0.08 / 12) ** -120))
+        # Conditions that the question does not contain are dropped
+        assert answer.understanding == {
+            "asks_for": "The level monthly instalment on the loan",
+            "conditions": ["8% interest is charged each month on what I still owe"]}
+        text = answer.explain()
+        assert "What the language model understood" in text
+        assert "Asked for: The level monthly instalment on the loan" in text
+        assert "The language model read how the interest rate is quoted as: a nominal annual " \
+               "rate charged monthly on the reducing balance" in text
+        assert "*What the language model understood:*" in answer.to_markdown()
+        # The model was offered ACTUNEO's own options, each explained, and "not stated"
+        offered = backend.offered["interest_type"]
+        assert offered["enum"] == ["flat", "nominal", "effective", "not_stated"]
+        assert "flat = a flat rate" in offered["description"]
+        assert "actuary" in backend.prompts[0][1] and "do not add conditions" in backend.prompts[0][1]
+
+    def test_the_model_cannot_change_what_the_question_does_not_state(self, monkeypatch):
+        # Saying only what is already the default is treated as "not stated"
+        self.use(monkeypatch, ReadingBackend({"asks_for": "x", "conditions": []},
+                                             {"interest_type": "effective"}))
+        plain = ai.ask("What is the monthly repayment on a loan of 50000 over 10 years at 8%?")
+        assert plain.arguments["interest_type"] == "effective"
+        assert "Not stated, so assumed: how the interest rate is quoted" in " ".join(plain.notes)
+        assert "language model read" not in " ".join(plain.notes)
+        # Standard wording is settled by rule, and the model is not asked about it
+        backend = self.use(monkeypatch, ReadingBackend({"asks_for": "x", "conditions": []},
+                                                       {"interest_type": "flat"}))
+        stated = ai.ask("Monthly repayment on a loan of 50000 over 10 years at 8% reducing balance")
+        assert stated.arguments["interest_type"] == "nominal"
+        assert ["conventions"] not in backend.calls
+        # An option that is not one of ACTUNEO's is ignored
+        self.use(monkeypatch, ReadingBackend({"asks_for": "x", "conditions": []},
+                                             {"interest_type": "compound daily on Mars"}))
+        assert ai.ask("Repayment on a loan of 50000 over 10 years at 8%?").arguments[
+            "interest_type"] == "effective"
+
+    def test_a_small_model_is_not_trusted_to_interpret(self, monkeypatch, tmp_path):
+        backend = self.use(monkeypatch, FakeBackend("loan_repayment"))
+        answer = ai.ask("What is the monthly repayment on a loan of 50000 over 10 years at 8%?")
+        assert backend.calls == [] and answer.understanding is None
+        assert "too small to be trusted to interpret your wording" in " ".join(answer.notes)
+        forced = ai.ask("What is the monthly repayment on a loan of 50000 over 10 years at 8%?",
+                        model_reads=True)
+        assert ["reading"] in backend.calls and forced.solved
+        # Which models are trusted
+        assert not assistant.model_reads_questions(None)
+        local = type("Local", (), {"name": "local"})()
+        hosted = type("Hosted", (), {"name": "gemini"})()
+        assert assistant.model_reads_questions(hosted)
+        from actuneo.ai import config
+        for size, trusted in [(396_705_472, False), (2_497_280_256, True)]:
+            config.save_config({"backend": "local", "local": {"model": {"size_bytes": size}}})
+            assert assistant.model_reads_questions(local) is trusted
 
     def test_a_number_from_the_model_must_be_in_the_question(self, monkeypatch):
         question = "Loan repayment: I borrowed 9000, the rate is 10%, it runs a decade (10)."

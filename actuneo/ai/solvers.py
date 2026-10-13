@@ -38,6 +38,11 @@ class Param:
         monthly_to_annual: An amount stated per month is multiplied by 12
         cue_only: Read this quantity only where a cue matches, never by
             taking the next unused number in the question
+        names: For a "choice": what each value means, in words. Shown to the
+            user and given to the language model so that it can tell which
+            one a question describes.
+        interpret: A convention that the language model may read from the
+            wording when the fixed words do not appear
         low, high: Range outside which a value is refused
     """
     name: str
@@ -49,6 +54,8 @@ class Param:
     choices: Optional[Dict[Any, Tuple[str, ...]]] = None
     monthly_to_annual: bool = False
     cue_only: bool = False
+    names: Optional[Dict[Any, str]] = None
+    interpret: bool = False
     low: Optional[float] = None
     high: Optional[float] = None
 
@@ -64,6 +71,7 @@ class Solver:
     solve: Callable[..., Solution] = field(compare=False)
     example: str = ""
     uses: Tuple[str, ...] = ()      # kinds of the user's own data it can take
+    handles: Tuple[str, ...] = ()   # conditions in a question that it allows for
 
     def tool(self) -> Dict[str, Any]:
         """The solver described as a tool for a language model."""
@@ -72,8 +80,11 @@ class Solver:
             if param.kind == "choice":
                 values = list(param.choices)
                 kind = "integer" if all(isinstance(v, int) for v in values) else "string"
-                properties[param.name] = {"type": kind, "enum": values,
-                                          "description": param.label}
+                meaning = param.label
+                if param.names:
+                    meaning += ". " + "; ".join(f"{value} = {text}"
+                                                for value, text in param.names.items())
+                properties[param.name] = {"type": kind, "enum": values, "description": meaning}
             elif param.kind in ("age", "years"):
                 properties[param.name] = {"type": "integer", "description": param.label}
             elif param.kind == "rate":
@@ -105,16 +116,19 @@ SEX_WORDS = {"F": ("woman", "women", "female", "lady", "she", "her", "widow", "w
                    "father", "gentleman")}
 
 AGE = Param("age", "age", "the age", low=0, high=120)
-SEX = Param("sex", "choice", "the sex (M or F)", required=False, default="M", choices=SEX_WORDS)
+SEX = Param("sex", "choice", "the sex", required=False, default="M", choices=SEX_WORDS,
+            names={"M": "male", "F": "female"})
 RATE = Param("interest_rate", "rate", "the interest rate", low=-0.5, high=1.0)
-BASIS = Param("basis", "choice", "the mortality basis (zimbabwe, south_africa or am92)",
+BASIS = Param("basis", "choice", "the mortality basis",
               required=False, default="zimbabwe",
               choices={"zimbabwe": ("zimbabwe", "zimbabwean", "zim", "ipec"),
                        "south_africa": ("south africa", "south african", "sa85", "sa 85",
                                         "saiml98", "saifl98", "assa"),
                        "am92": ("am92", "am 92", "uk table", "uk tables", "institute table"),
                        "own": ("my table", "my own table", "own table", "this table",
-                               "the table supplied", "my mortality")})
+                               "the table supplied", "my mortality")},
+              names={"zimbabwe": "the Zimbabwe 2023 tables", "south_africa": "South African tables",
+                     "am92": "AM92 (UK)", "own": "your own table"})
 TRIANGLE = Param("triangle", "choice", "the triangle (RAA, GenIns, or your own data)",
                  choices={"RAA": ("raa",), "GenIns": ("genins", "gen ins", "taylor", "ashe"),
                           "own": ("my triangle", "my own triangle", "my data", "this triangle",
@@ -236,38 +250,116 @@ register(Solver(
     _annuity_certain, "Present value of payments of 1000 at the end of each year for 10 years at 6%"))
 
 
-def _loan_repayment(amount: float, interest_rate: float, years: int) -> Solution:
+INTEREST_TYPES = {
+    "effective": "an effective annual rate, compounded once a year",
+    "nominal": "a nominal annual rate charged monthly on the reducing balance (rate / 12 a month)",
+    "flat": "a flat rate: simple interest on the original loan for the whole term",
+}
+
+
+def _monthly_rate_for(amount: float, payment: float, n: int) -> float:
+    """The monthly rate at which n payments repay the loan, by bisection."""
+    low, high = 0.0, 1.0
+    for _ in range(200):
+        mid = (low + high) / 2
+        value = payment * (1 - (1 + mid) ** -n) / mid if mid else payment * n
+        if value > amount:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2
+
+
+def _loan_repayment(amount: float, interest_rate: float, years: int,
+                    interest_type: str = "effective") -> Solution:
     from ..finance import Loan
-    loan = Loan(amount, interest_rate, years, payments_per_year=12)
-    j = (1 + interest_rate) ** (1 / 12) - 1
-    n = 12 * years
-    factor = (1 - (1 + j) ** -n) / j if j else float(n)
-    payment = loan.payment
-    interest_first = amount * j
-    nominal_j = interest_rate / 12
-    nominal_payment = amount * nominal_j / (1 - (1 + nominal_j) ** -n) if nominal_j else amount / n
+    i, n = interest_rate, 12 * years
+    given = {"loan L": money(amount), "interest i": f"{percent(i)} a year",
+             "term": f"{years} years, so n = {n} monthly payments",
+             "the rate is": INTEREST_TYPES[interest_type]}
+    effective_j = (1 + i) ** (1 / 12) - 1
+    nominal_j = i / 12
+
+    def level(j: float) -> float:
+        return amount * j / (1 - (1 + j) ** -n) if j else amount / n
+
+    if interest_type == "flat":
+        interest = amount * i * years
+        payment = (amount + interest) / n
+        true_j = _monthly_rate_for(amount, payment, n)
+        steps = [
+            Step("Interest for the whole term, charged on the original loan",
+                 ["I = L x i x years", f"  = {money(amount)} x {i:.6g} x {years}",
+                  f"  = {money(interest)}"]),
+            Step("Spread the loan and the interest evenly over the payments",
+                 ["X = (L + I) / n", f"  = ({money(amount)} + {money(interest)}) / {n}",
+                  f"  = {money(payment)}"]),
+            Step("The rate actually being paid on the reducing balance",
+                 ["Solve  L = X x a_n at rate j  for the monthly rate j (by trial)",
+                  f"j = {number(true_j, 8)} a month",
+                  f"nominal annual rate = 12 x j = {12 * true_j:.2%}",
+                  f"effective annual rate = (1 + j)^12 - 1 = {(1 + true_j) ** 12 - 1:.2%}"]),
+        ]
+        assumptions = [
+            "Flat rate: interest is charged on the full original loan for every year, although "
+            "the balance falls as instalments are paid. Repayments are monthly in arrears.",
+            f"On a reducing balance at a nominal {percent(i)} the instalment would be "
+            f"{money(level(nominal_j))}.",
+        ]
+        check = (f"A flat {percent(i)} costs the same as about {12 * true_j:.1%} a year charged "
+                 "on the reducing balance, well above the quoted rate.")
+    else:
+        if interest_type == "nominal":
+            j = nominal_j
+            first = Step("Monthly rate: the annual rate divided by 12",
+                         ["j = i / 12", f"  = {i:.6g} / 12", f"  = {number(j, 8)}"])
+            payment = level(j)
+            assumptions = [
+                f"{percent(i)} is a nominal annual rate convertible monthly: each month interest of "
+                "i/12 is charged on the balance then outstanding (a reducing-balance loan). "
+                "Repayments are monthly in arrears and repay the loan in full.",
+                f"The effective annual rate is (1 + i/12)^12 - 1 = {(1 + j) ** 12 - 1:.4%}.",
+                f"If {percent(i)} were an effective annual rate the instalment would be "
+                f"{money(level(effective_j))}.",
+            ]
+        else:
+            j = effective_j
+            first = Step("Monthly rate equivalent to the effective annual rate",
+                         ["j = (1 + i)^(1/12) - 1", f"  = {1 + i:.6g}^(1/12) - 1",
+                          f"  = {number(j, 8)}"])
+            payment = Loan(amount, i, years, payments_per_year=12).payment
+            assumptions = [
+                f"{percent(i)} is an effective annual rate: interest compounds once a year, so "
+                "the monthly rate is the twelfth root, not a twelfth. Repayments are monthly in "
+                "arrears and repay the loan in full.",
+                f"Banks usually quote a nominal rate charged monthly on the reducing balance. "
+                f"On that basis the monthly rate is i/12 = {number(nominal_j, 8)} and the "
+                f"instalment is {money(level(nominal_j))}.",
+            ]
+        factor = (1 - (1 + j) ** -n) / j if j else float(n)
+        interest_first = amount * j
+        steps = [
+            first,
+            Step(f"Annuity factor for {n} monthly payments",
+                 ["a_n at rate j = (1 - (1 + j)^-n) / j",
+                  f"  = (1 - {number((1 + j) ** -n)}) / {number(j, 8)}", f"  = {number(factor, 4)}"]),
+            Step("Repayment, from: loan = repayment x annuity factor",
+                 ["X = L / a_n", f"  = {money(amount)} / {number(factor, 4)}",
+                  f"  = {money(payment)}"]),
+            Step("First repayment split into interest and capital",
+                 [f"interest = L x j = {money(amount)} x {number(j, 8)} = {money(interest_first)}",
+                  f"capital  = X - interest = {money(payment)} - {money(interest_first)} "
+                  f"= {money(payment - interest_first)}",
+                  "Each month the interest falls and the capital repaid rises, because the "
+                  "balance is reducing."]),
+        ]
+        check = None
+    total = n * payment
     return Solution(
-        "Level monthly repayment on a loan",
-        {"loan L": money(amount), "interest i": f"{percent(interest_rate)} a year",
-         "term": f"{years} years, so n = {n} monthly payments"},
-        [Step("Monthly rate of interest equivalent to the annual rate",
-              ["j = (1 + i)^(1/12) - 1", f"  = {1 + interest_rate:.6g}^(1/12) - 1", f"  = {number(j, 8)}"]),
-         Step(f"Annuity factor for {n} monthly payments",
-              ["a_n at rate j = (1 - (1 + j)^-n) / j",
-               f"  = (1 - {number((1 + j) ** -n)}) / {number(j, 8)}", f"  = {number(factor, 4)}"]),
-         Step("Repayment, from: loan = repayment x annuity factor",
-              ["X = L / a_n", f"  = {money(amount)} / {number(factor, 4)}", f"  = {money(payment)}"]),
-         Step("First repayment split into interest and capital",
-              [f"interest = L x j = {money(amount)} x {number(j, 8)} = {money(interest_first)}",
-               f"capital  = X - interest = {money(payment)} - {money(interest_first)} "
-               f"= {money(payment - interest_first)}"])],
-        f"The repayment is {money(payment)} a month.", payment,
-        [f"{percent(interest_rate)} is taken as an effective annual rate, repayments are monthly "
-         "in arrears, and the loan is repaid in full by the end.",
-         f"If {percent(interest_rate)} is instead a nominal rate convertible monthly, the monthly "
-         f"rate is i/12 = {number(nominal_j, 8)} and the repayment is {money(nominal_payment)}."],
-        f"Total repaid is {n} x {money(payment)} = {money(n * payment)}, of which "
-        f"{money(n * payment - amount)} is interest.")
+        "Level monthly repayment on a loan", given, steps,
+        f"The repayment is {money(payment)} a month.", payment, assumptions,
+        check or f"Total repaid is {n} x {money(payment)} = {money(total)}, of which "
+                 f"{money(total - amount)} is interest.")
 
 
 register(Solver(
@@ -276,8 +368,23 @@ register(Solver(
     ((r"\bloan\b|mortgage", 3), (r"borrow|\blent\b|\blend", 3),
      (r"repayment|instal+ment|pay each month|monthly payment", 2)),
     (Param("amount", "amount", "the amount borrowed", low=0), RATE,
-     _years("the term of the loan in years")),
-    _loan_repayment, "What is the monthly repayment on a loan of 50000 over 10 years at 8%?"))
+     _years("the term of the loan in years"),
+     Param("interest_type", "choice", "how the interest rate is quoted", required=False,
+           default="effective", names=INTEREST_TYPES, interpret=True,
+           choices={"flat": ("flat rate", "flat interest", "flat", "simple interest", "add-on",
+                             "add on interest"),
+                    "nominal": ("reducing balance", "reducing balances", "reducing-balance",
+                                "diminishing balance", "declining balance", "on the outstanding "
+                                "balance", "compounded monthly", "compounding monthly",
+                                "compound monthly", "monthly compounding", "convertible monthly",
+                                "nominal", "apr", "per annum compounded monthly", "p.a. monthly"),
+                    "effective": ("effective", "compounded annually", "compounding annually",
+                                  "compounded yearly", "annual compounding", "compound interest",
+                                  "compounding", "compounded")})),
+    _loan_repayment, "What is the monthly repayment on a loan of 50000 over 10 years at 8%?",
+    handles=(r"reducing[- ]balances?|diminishing balance|declining balance", r"flat( rate)?",
+             r"simple interest", r"compound\w*", r"convertible", r"nominal", r"effective",
+             r"apr", r"monthly", r"annually|yearly")))
 
 
 def _bond_price(coupon_rate: float, years: int, yield_rate: float) -> Solution:
@@ -519,37 +626,46 @@ register(Solver(
     uses=("table",)))
 
 
+FREQUENCIES = {12: "monthly", 4: "quarterly", 2: "half-yearly", 1: "once a year"}
+
+
 def _life_annuity(age: int, annual_amount: float, interest_rate: float, sex: str = "M",
-                  basis: str = "zimbabwe", data: Optional[dict] = None) -> Solution:
+                  basis: str = "zimbabwe", payment_frequency: int = 12,
+                  timing: str = "advance", data: Optional[dict] = None) -> Solution:
     from ..mortality import SurvivalFunctions
     from ..pensions import pension_annuity
     table, label = _table(basis, sex, age, annuitant=True, data=data)
     v = 1 / (1 + interest_rate)
+    m = int(payment_frequency)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         annual = SurvivalFunctions(table, interest_rate).annuity_due(age)
-        monthly = pension_annuity(table, age, interest_rate, frequency=12)
+        monthly = pension_annuity(table, age, interest_rate, frequency=m, timing=timing)
+    how_paid = f"{FREQUENCIES[m]} in {'advance' if timing == 'advance' else 'arrears'}"
+    shift = (m - 1) / (2 * m) if timing == "advance" else (m + 1) / (2 * m)
     terms = [f"k={k}: v^{k} x {k}_p_x = {number(v ** k)} x {number(table.npx(age, k))} "
              f"= {number(v ** k * table.npx(age, k))}" for k in range(3)]
     value = annual_amount * monthly
     return Solution(
         "Value of a pension payable for life",
         {"age x": str(age), "sex": "male" if sex == "M" else "female",
-         "pension": f"{money(annual_amount)} a year, paid monthly in advance",
+         "pension": f"{money(annual_amount)} a year, paid {how_paid}",
          "interest i": percent(interest_rate)},
         [Step("Discount factor", ["v = 1 / (1 + i)", f"  = {number(v)}"]),
          Step("Annuity of 1 a year paid yearly in advance",
               ["a-due_x = sum over k of v^k x k_p_x   (k = 0, 1, 2, ...)"] + terms
               + ["...", f"a-due_x = {number(annual, 4)}"]),
-         Step("Adjust for monthly payment",
-              ["a-due_x(12) is approximately a-due_x - 11/24",
-               f"  = {number(annual, 4)} - 0.4583 = {number(annual - 11 / 24, 4)}",
+         Step(f"Adjust for payment {how_paid}",
+              [f"factor is approximately a-due_x - {shift:.4f}"
+               + (f"   [(m - 1) / 2m with m = {m}]" if timing == "advance"
+                  else f"   [(m + 1) / 2m with m = {m}]"),
+               f"  = {number(annual, 4)} - {shift:.4f} = {number(annual - shift, 4)}",
                f"Exact, with deaths spread evenly over each year: {number(monthly, 4)}"]),
          Step("Value of the pension",
-              ["value = pension x a-due_x(12)", f"      = {money(annual_amount)} x {number(monthly, 4)}",
+              ["value = pension x factor", f"      = {money(annual_amount)} x {number(monthly, 4)}",
                f"      = {money(value)}"])],
         f"The pension is worth {money(value)}.", value,
-        [f"Mortality: {label}.", "Paid monthly in advance for life, with no increases, no "
+        [f"Mortality: {label}.", f"Paid {how_paid} for life, with no increases, no "
          "guarantee period and no spouse's pension.", "Interest is an effective annual rate."],
         f"The factor {monthly:.2f} means the pension is worth about {monthly:.0f} years' "
         f"payments. Expectation of life at {age} on this table is {table.life_expectancy(age):.1f} "
@@ -564,9 +680,25 @@ register(Solver(
     (AGE,
      Param("annual_amount", "amount", "the yearly amount of the pension", low=0,
            monthly_to_annual=True),
-     RATE, SEX, BASIS),
+     RATE, SEX, BASIS,
+     Param("payment_frequency", "choice", "how often the pension is paid", required=False,
+           default=12, names=FREQUENCIES, interpret=True,
+           choices={1: ("annually", "yearly", "once a year", "paid annually", "annual payments",
+                        "each year", "every year"),
+                    4: ("quarterly", "every quarter"),
+                    2: ("half-yearly", "half yearly", "semi-annually", "twice a year"),
+                    12: ("monthly", "a month", "per month", "each month", "every month")}),
+     Param("timing", "choice", "whether it is paid in advance or in arrears", required=False,
+           default="advance", interpret=True,
+           names={"advance": "in advance (at the start of each period)",
+                  "arrears": "in arrears (at the end of each period)"},
+           choices={"advance": ("in advance", "start of each", "beginning of each", "annuity-due",
+                                "annuity due"),
+                    "arrears": ("in arrears", "end of each", "end of every")})),
     _life_annuity, "Value a pension of 6000 a year from age 65 at 5% interest.",
-    uses=("table",)))
+    uses=("table",),
+    handles=(r"monthly|quarterly|half[- ]yearly|semi[- ]annual\w*|annually|yearly",
+             r"in advance|in arrears|start of each|end of each|beginning of")))
 
 
 def _term_assurance_premium(age: int, term: int, sum_assured: float, interest_rate: float,
