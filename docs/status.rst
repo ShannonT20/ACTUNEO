@@ -413,11 +413,22 @@ AI module
   Free memory is measured at the moment of setup: with other applications
   open, a smaller model is recommended than the machine could otherwise run.
 * Constraining the output guarantees a valid function name and arguments
-  of the right shape, not the right values. In a trial on one machine the
-  0.5 GB model chose the correct function each time but gave a wrong value
-  for an argument (the sex of a life) and a wrong definition of an IBNR
-  reserve. Only the 0.5 GB model has been run; the larger tiers have been
-  checked for their download details, not loaded.
+  of the right shape, not the right values. On the module's own benchmark
+  (twenty requests, twelve tools, one Apple Silicon machine) the smallest
+  tier, Qwen3 0.6B, chose the right function 75% of the time and the right
+  function and arguments 62% of the time; every miss was a real request
+  answered with "none". The earlier Qwen2.5 0.5B scored 65% and 50%.
+* Only Qwen3 0.6B has been run. The 1.7B, 4B, 8B, 14B and 30B-A3B tiers and
+  the four challengers have been checked for their download details, not
+  loaded or benchmarked, so the claim that larger tiers do better is
+  untested here. Run ``actuneo.ai.benchmark()`` on your own machine.
+* ``shortlist_tools`` ranks tools by shared words, not by meaning. A request
+  phrased in words the tool descriptions do not use can drop the right tool
+  before the model sees it.
+* There is no router that answers common questions without the model, no
+  search over ACTUNEO's own functions, and no worked explanation of
+  results. ``call_tools`` returns a function name and arguments; calling
+  the function is left to the caller.
 * The local backend was run on one machine only (Apple Silicon, macOS).
   Windows, Linux and NVIDIA cards are covered by tests with mock hardware.
 * Models are fetched by plain HTTP, because Hugging Face's newer transfer

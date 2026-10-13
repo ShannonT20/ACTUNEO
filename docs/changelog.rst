@@ -32,10 +32,17 @@ Added
   * ``setup()`` detects memory, processor, graphics card and free disk, recommends the
     largest local model (quantised GGUF) the machine can run comfortably, shows the download
     size, asks, downloads with resume and an integrity check, and remembers the choice
-  * A catalog of six models from 0.5 GB to 19.9 GB in a JSON file that can be replaced
-    without changing code
-  * ``LocalBackend`` (llama.cpp) with ``generate()`` and ``call_tools()``; tool choices are
-    constrained to a JSON schema built from the tools
+  * A catalog in a JSON file that can be replaced without changing code: six Qwen3 tiers
+    from 0.6B (0.4 GB, for a 4 GB machine with no GPU) through 8B (the default) to 30B-A3B,
+    and four challengers installed only by name (Phi-4-mini, Phi-4-mini-reasoning, Gemma 3
+    4B, DeepSeek-R1-Distill 14B)
+  * ``LocalBackend`` (llama.cpp) with ``generate()`` and ``call_tools()``. A tool is chosen
+    in two steps, each held to a JSON schema: the function, then its arguments. Qwen3's
+    reasoning mode is switched off, only the most relevant tools are shown
+    (``shortlist_tools``), threads follow the physical cores, and recent answers are
+    remembered
+  * ``benchmark()``: twenty actuarial requests over twelve tools, scoring the function
+    chosen, the arguments and the time taken
   * ``configure()`` to use Gemini, OpenAI, Anthropic or Ollama with the user's own key, which
     is never written to the configuration file
   * ``status()`` and ``remove_model()``

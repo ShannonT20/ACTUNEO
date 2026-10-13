@@ -38,8 +38,9 @@ system and Python, is within what is free:
 
 The download plus 1 GB must also fit on the disk. The recommended model is
 the largest that fits, except that a model which cannot sit wholly on a GPU
-is recommended only up to about 5 GB, because larger ones answer slowly on a
-processor. Those are still offered as the "largest" alternative, which allows
+is recommended only up to a size a processor answers at an acceptable speed
+(the limit is 5.5 GB, which admits Qwen3 8B). Those are still
+offered as the "largest" alternative, which allows
 only 10% headroom. If memory cannot be measured the smallest model is taken,
 and if nothing fits no model is downloaded.
 
@@ -85,6 +86,19 @@ Backends
 .. autoclass:: actuneo.ai.OllamaBackend
 
 .. autofunction:: actuneo.ai.tool_choice_schema
+
+.. autofunction:: actuneo.ai.shortlist_tools
+
+Comparing models
+----------------
+
+A fixed set of twenty actuarial requests over twelve tools, each with the
+function that should be chosen and the arguments it should be given. Run it
+on your own machine before settling on a model. The set is small and was
+written for this purpose: a score is a guide to reliability at this task,
+not a general measure of a model.
+
+.. autofunction:: actuneo.ai.benchmark
 
 Where files are kept
 --------------------

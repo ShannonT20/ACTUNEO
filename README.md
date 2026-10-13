@@ -153,7 +153,8 @@ import actuneo.ai as ai
 
 ai.setup()                  # shows the recommendation and asks before downloading
 ai.setup(auto=True)         # take the recommended model without asking
-ai.setup(model="small")     # take a particular model: tiny, small, medium, large, ...
+ai.setup(model="small")     # take a particular model (see the table below)
+ai.setup(model="largest")   # the most this machine can hold
 ai.status()                 # what is installed, how big, and on what hardware
 ai.remove_model()           # delete the model and free the disk space
 
@@ -171,8 +172,33 @@ call = model.call_tools("How long is a 40 year old expected to live?", tools)
 print(call.name, call.arguments)    # life_expectancy {'age': 40}
 ```
 
-The reply to `call_tools` is held to a schema built from your tools, so even a small
-model cannot name a function that does not exist.
+The models are the Qwen3 family, chosen by how much memory is free:
+
+| Key | Model | Download | Free memory needed |
+|---|---|---|---|
+| `minimal` | Qwen3 0.6B | 0.4 GB | about 1.5 GB (a 4 GB laptop with no GPU) |
+| `tiny` | Qwen3 1.7B | 1.1 GB | about 3 GB |
+| `small` | Qwen3 4B | 2.5 GB | about 5 GB |
+| `default` | Qwen3 8B | 5.0 GB | about 9.5 GB |
+| `strong` | Qwen3 14B | 9.0 GB | about 16 GB, or a 13 GB graphics card |
+| `max` | Qwen3 30B-A3B | 18.6 GB | about 31 GB, or a 24 GB graphics card when asked for as `largest` |
+
+Four more can be installed by name to compare: `phi4-mini`, `phi4-mini-reasoning`,
+`gemma3-4b` and `deepseek-r1-14b`. To see how a model does on your machine:
+
+```py
+ai.benchmark()      # 20 actuarial requests: right function, right arguments, seconds
+```
+
+The model is used only to pick a function and fill in its arguments, a few dozen
+tokens, which keeps a processor fast enough:
+
+- the reply is held to a schema built from your tools, so even a small model cannot
+  name a function that does not exist;
+- Qwen3's reasoning mode is switched off (`/no_think`);
+- only the five most relevant tools are shown to the model;
+- threads are set to the physical cores and the context window is kept small;
+- the loaded model and recent answers are kept, so a repeated question is instant.
 
 If the machine is too small, or you would rather use a hosted model, bring your own
 key. The key is read from the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`,
@@ -182,6 +208,9 @@ ACTUNEO's configuration file.
 ```py
 ai.configure(provider="gemini", api_key="...")   # or "openai", "anthropic", "ollama"
 ```
+
+The notebook `examples/actuneo_ai_setup.ipynb` walks through setup, the benchmark and
+removal.
 
 A language model can be wrong about actuarial work. `actuneo.ai` supplies the model;
 nothing in ACTUNEO's calculations depends on it, and its answers need checking.
