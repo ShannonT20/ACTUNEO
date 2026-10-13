@@ -14,6 +14,13 @@ The local model needs the optional packages::
 Setting up
 ----------
 
+In a terminal:
+
+.. automodule:: actuneo.ai.cli
+   :no-members:
+
+From Python:
+
 .. autofunction:: actuneo.ai.setup
 
 .. autofunction:: actuneo.ai.status

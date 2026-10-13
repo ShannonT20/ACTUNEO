@@ -41,6 +41,9 @@ Added
     reasoning mode is switched off, only the most relevant tools are shown
     (``shortlist_tools``), threads follow the physical cores, and recent answers are
     remembered
+  * An ``actuneo-ai`` command (also ``python -m actuneo.ai``) with ``setup``, ``models``,
+    ``status``, ``benchmark``, ``remove`` and ``configure``, so the question is asked and
+    the download's progress is shown in the terminal
   * ``benchmark()``: twenty actuarial requests over twelve tools, scoring the function
     chosen, the arguments and the time taken
   * ``configure()`` to use Gemini, OpenAI, Anthropic or Ollama with the user's own key, which

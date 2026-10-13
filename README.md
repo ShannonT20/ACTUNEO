@@ -148,6 +148,19 @@ that it works offline and costs nothing.
 pip install actuneo[ai]
 ```
 
+Set it up in a terminal, where you answer the question and see the download's progress:
+
+```bash
+actuneo-ai models       # every model and whether it fits this machine
+actuneo-ai setup        # shows the recommendation, asks, then downloads
+actuneo-ai status       # what is installed
+actuneo-ai benchmark    # how well the installed model does
+actuneo-ai remove       # delete the model and free the space
+```
+
+Use `actuneo-ai setup --model tiny` to pick a model yourself, and `python -m actuneo.ai`
+if the `actuneo-ai` command is not found. The same things can be done from Python:
+
 ```py
 import actuneo.ai as ai
 
