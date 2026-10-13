@@ -15,6 +15,7 @@ Modules:
 - pensions: Defined benefit valuations with a choice of funding method, IAS 19 accounting,
   defined contribution projections, and calculations from Zimbabwe's Pensions and Provident
   Funds Act
+- ai: A local language model chosen for the machine, or a provider with the user's own key
 - zimbabwe: Zimbabwe 2023 mortality table catalogue and currency reference data
 - simulation: Aggregate claims and a claims simulator for testing reserving methods
 - macro_africa: World Bank economic indicators for African countries
@@ -42,6 +43,7 @@ from . import ifrs17
 from . import simulation
 from . import macro_africa
 from . import pensions
+from . import ai
 from . import zimbabwe
 from . import templates
 # Other modules will be imported as they are developed
@@ -55,6 +57,7 @@ __all__ = [
     'simulation',
     'macro_africa',
     'pensions',
+    'ai',
     'zimbabwe',
     'templates',
     # Add other modules as they are implemented
