@@ -1062,6 +1062,72 @@ class TestAnthropicBackend:
         assert isinstance(backend, ai.AnthropicBackend) and backend.model == "claude-opus-5-5"
 
 
+class TestCommandLine:
+    def run(self, *arguments):
+        from actuneo.ai.cli import main
+        return main(list(arguments))
+
+    def test_setup_with_a_named_model(self, hub, monkeypatch, capsys):
+        monkeypatch.setattr(setup_mod, "detect_hardware", lambda directory=None: LAPTOP)
+        assert self.run("setup", "--model", "small") == 0
+        assert ai.status(quiet=True)["local_model"]["key"] == "small"
+        assert self.run("setup", "--auto", "--force") == 0
+        assert ai.status(quiet=True)["local_model"]["key"] == "large"
+        capsys.readouterr()
+        assert self.run("status") == 0
+        assert "Local model: Fake large" in capsys.readouterr().out
+        assert self.run("remove", "--yes") == 0
+        assert ai.status(quiet=True)["local_model"] is None
+
+    def test_setup_is_the_default_and_asks_in_the_terminal(self, hub, monkeypatch):
+        monkeypatch.setattr(setup_mod, "detect_hardware", lambda directory=None: LAPTOP)
+        asked = []
+        monkeypatch.setattr("builtins.input", lambda question: asked.append(question) or "1")
+        assert self.run() == 0
+        assert len(asked) == 1 and ai.status(quiet=True)["local_model"]["key"] == "tiny"
+
+    def test_models_lists_what_fits(self, monkeypatch, capsys):
+        cli = importlib.import_module("actuneo.ai.cli")
+        monkeypatch.setattr(cli, "detect_hardware", lambda: profile(16, 10.0))
+        assert self.run("models") == 0
+        lines = capsys.readouterr().out.splitlines()
+        row = {line.split()[0]: line for line in lines if line and line.split()[0] in
+               ("minimal", "default", "strong", "max", "phi4-mini")}
+        assert "yes, CPU only" in row["minimal"]
+        assert "<- recommended" in row["default"] and "5.0 GB" in row["default"]
+        assert row["strong"].rstrip().endswith("no") and row["max"].rstrip().endswith("no")
+        assert "(challenger)" in row["phi4-mini"]
+
+    def test_errors_are_reported_without_a_traceback(self, hub, monkeypatch, capsys):
+        monkeypatch.setattr(setup_mod, "detect_hardware", lambda directory=None: LAPTOP)
+        assert self.run("setup", "--model", "enormous") == 1
+        assert "Unknown model 'enormous'" in capsys.readouterr().err
+        hub["error"] = KeyboardInterrupt()
+        assert self.run("setup", "--model", "tiny") == 1
+        assert "interrupted" in capsys.readouterr().err
+        assert self.run("benchmark") == 1          # nothing is installed
+        assert "No model is set up" in capsys.readouterr().err
+
+    def test_configure_reads_the_key_without_echoing_it(self, monkeypatch, capsys):
+        cli = importlib.import_module("actuneo.ai.cli")
+        monkeypatch.setattr(cli.getpass, "getpass", lambda question: "typed-secret")
+        assert self.run("configure", "openai", "--model", "test-model") == 0
+        assert "typed-secret" not in capsys.readouterr().out
+        assert "typed-secret" not in config_module.config_path().read_text()
+        assert ai.status(quiet=True)["provider"] == {"name": "openai", "model": "test-model",
+                                                     "api_key_found": True}
+
+    def test_download_notices_are_hidden(self, hub, tmp_path):
+        import logging
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with setup_mod._quiet_hub():
+                warnings.warn("IProgress not found. Please update jupyter and ipywidgets.")
+                assert logging.getLogger("huggingface_hub").level == logging.ERROR
+        assert logging.getLogger("huggingface_hub").level != logging.ERROR
+
+
 def test_importing_the_module_needs_no_optional_packages():
     code = ("import sys, actuneo.ai; "
             "heavy = [m for m in ('llama_cpp', 'huggingface_hub', 'anthropic', 'rich') "

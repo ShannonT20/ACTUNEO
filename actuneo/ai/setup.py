@@ -25,12 +25,14 @@ is recommended only up to about 5.5 GB, because larger ones answer slowly on a
 processor. Those are still offered as the "largest" alternative.
 """
 
+import contextlib
 import datetime
 import errno
 import hashlib
 import logging
 import os
 import shutil
+import warnings
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -266,6 +268,24 @@ def _say(text: str, title: Optional[str] = None) -> None:
 # ----------------------------------------------------------------------
 # Download
 # ----------------------------------------------------------------------
+@contextlib.contextmanager
+def _quiet_hub():
+    """
+    Hide two notices that do not matter here: Hugging Face's reminder that
+    requests are anonymous (no account is needed for these models), and
+    tqdm's complaint in a notebook without ipywidgets.
+    """
+    hub_logger = logging.getLogger("huggingface_hub")
+    level = hub_logger.level
+    hub_logger.setLevel(logging.ERROR)
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*IProgress not found.*")
+            yield
+    finally:
+        hub_logger.setLevel(level)
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as file:
@@ -319,7 +339,8 @@ def download_model(model: ModelSpec, directory: Union[str, Path, None] = None,
         # "0" to use xet.
         os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
         try:
-            from huggingface_hub import hf_hub_download
+            with _quiet_hub():
+                from huggingface_hub import hf_hub_download
         except ImportError as error:
             raise SetupError("huggingface_hub is not installed. "
                              "Install the AI extras with: pip install actuneo[ai]") from error
@@ -329,8 +350,9 @@ def download_model(model: ModelSpec, directory: Union[str, Path, None] = None,
                              f"needed and {free:.1f} GB is free in {directory}.")
         logger.info("Downloading %s/%s to %s", model.repo, model.filename, directory)
         try:
-            target = Path(hf_hub_download(repo_id=model.repo, filename=model.filename,
-                                          local_dir=str(directory)))
+            with _quiet_hub():
+                target = Path(hf_hub_download(repo_id=model.repo, filename=model.filename,
+                                              local_dir=str(directory)))
         except KeyboardInterrupt:
             raise SetupError("Download interrupted. Run actuneo.ai.setup() again to resume "
                              "where it stopped.") from None
@@ -391,8 +413,11 @@ def _ask(selection: Selection, input_func: Callable[[str], str]) -> Optional[Cho
         try:
             answer = input_func(question).strip().lower()
         except EOFError:
-            _say("No answer could be read. To run without questions use "
-                 "actuneo.ai.setup(yes=True), setup(auto=True) or setup(model=\"small\").")
+            _say("No answer could be read here. Run it in a terminal, where the question "
+                 "can be answered and the download shows its progress:\n"
+                 "    actuneo-ai setup\n"
+                 "or without questions: actuneo.ai.setup(auto=True) or "
+                 "setup(model=\"tiny\").")
             return None
         if answer in ("y", "yes"):
             return selection.recommended
@@ -409,7 +434,7 @@ def setup(auto: bool = False,
           force: bool = False,
           models_dir: Union[str, Path, None] = None,
           hardware: Optional[HardwareProfile] = None,
-          input_func: Callable[[str], str] = input) -> Dict[str, Any]:
+          input_func: Optional[Callable[[str], str]] = None) -> Dict[str, Any]:
     """
     Choose, download and configure a local model for this machine.
 
@@ -461,7 +486,7 @@ def setup(auto: bool = False,
     elif auto or yes:
         choice = selection.recommended
     else:
-        choice = _ask(selection, input_func)
+        choice = _ask(selection, input_func or input)
     if choice is None:
         _say("Nothing was downloaded. To use a provider with your own key:\n"
              "  actuneo.ai.configure(provider=\"gemini\", api_key=\"...\")")
@@ -565,7 +590,7 @@ def status(quiet: bool = False) -> Dict[str, Any]:
     return info
 
 
-def remove_model(yes: bool = False, input_func: Callable[[str], str] = input) -> Dict[str, Any]:
+def remove_model(yes: bool = False, input_func: Optional[Callable[[str], str]] = None) -> Dict[str, Any]:
     """
     Delete the downloaded model to free disk space.
 
@@ -585,7 +610,8 @@ def remove_model(yes: bool = False, input_func: Callable[[str], str] = input) ->
     size = path.stat().st_size / 1e9 if path.exists() else 0.0
     if not yes:
         try:
-            answer = input_func(f"Delete {local['model']['name']} ({size:.1f} GB)? [y/N]: ")
+            answer = (input_func or input)(
+                f"Delete {local['model']['name']} ({size:.1f} GB)? [y/N]: ")
         except EOFError:
             answer = ""
         if answer.strip().lower() not in ("y", "yes"):

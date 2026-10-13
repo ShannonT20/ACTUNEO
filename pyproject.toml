@@ -73,6 +73,9 @@ viz = [
     "seaborn>=0.11.0",
 ]
 
+[project.scripts]
+actuneo-ai = "actuneo.ai.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/ShannonT20/ACTUNEO"
 Documentation = "https://actuneo.readthedocs.io/"
