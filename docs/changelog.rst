@@ -27,7 +27,16 @@ Added
     under the Pensions and Provident Funds Act [Chapter 24:32], and IPEC's minimum funding
     level
 * Documentation: a guide to pension scheme valuation with the method and how it was checked
-* ``actuneo.ai`` (optional, ``pip install actuneo[ai]``):
+* ``actuneo.ai.ask()`` and ``actuneo-ai ask`` / ``actuneo-ai chat``: a question in plain
+  words is answered with a worked solution set out like a textbook's. Fixed rules read the
+  numbers and recognise the calculation, ACTUNEO does the arithmetic, and the working comes
+  from templates, not from a language model. Fourteen calculations: present and accumulated
+  values, annuities-certain, loan repayments, bond prices, effective rates, expectation of
+  life, survival probabilities, pensions for life, term assurance premiums, chain ladder
+  reserves, Mack's standard error, retirement fund projections and ZWL to ZiG. Missing
+  information is asked for instead of guessed, and a short glossary answers "what is"
+  questions. Needs no optional packages
+* ``actuneo.ai`` local model (optional, ``pip install actuneo[ai]``):
 
   * ``setup()`` detects memory, processor, graphics card and free disk, recommends the
     largest local model (quantised GGUF) the machine can run comfortably, shows the download

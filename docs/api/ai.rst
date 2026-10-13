@@ -11,8 +11,37 @@ The local model needs the optional packages::
 .. automodule:: actuneo.ai
    :no-members:
 
-Setting up
-----------
+Asking questions
+----------------
+
+.. automodule:: actuneo.ai.assistant
+   :no-members:
+
+.. autofunction:: actuneo.ai.ask
+
+.. autofunction:: actuneo.ai.topics
+
+.. autoclass:: actuneo.ai.Answer
+   :members:
+
+.. autoclass:: actuneo.ai.Solution
+   :members:
+
+Adding a calculation
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: actuneo.ai.solvers
+   :no-members:
+
+.. autoclass:: actuneo.ai.solvers.Solver
+   :members:
+
+.. autoclass:: actuneo.ai.solvers.Param
+
+.. autofunction:: actuneo.ai.solvers.register
+
+Setting up a model
+------------------
 
 In a terminal:
 

@@ -401,10 +401,32 @@ Pensions
 AI module
 ~~~~~~~~~
 
-* ``actuneo.ai`` supplies a language model and nothing else. No calculation
-  in ACTUNEO uses it, and nothing yet connects it to the library's
-  functions. A language model's statements about actuarial work can be
-  wrong and must be checked.
+* ``ask`` covers fourteen calculations, each on one fixed basis and set of
+  conventions (stated in the answer's assumptions). It is not a general
+  problem solver: a question outside those, or one that combines two
+  calculations, is not answered. Multi-step exam questions are out of reach.
+* The question is read by pattern rules. They were written against about
+  forty test questions and get those right; wording unlike them can be
+  misread or not recognised. *How the question was read* shows what was
+  taken from the question: check it, because a misread number still gives a
+  worked answer that looks correct.
+* Each solver's final figure is tested against a direct call to the
+  library. The intermediate lines of working are produced by the same code
+  and have been read through, not independently checked line by line.
+* The working assumes one convention where practice varies (an effective
+  annual rate for loans and bonds, half-yearly coupons, monthly pensions in
+  advance). The alternative is noted for loans and bonds only.
+* Mortality questions default to South African tables. The Zimbabwe 2023
+  tables are used only when the question says so, and cannot value a
+  pension below age 76 or a female assured life.
+* Triangles are the two built-in examples (RAA and GenIns). A user's own
+  triangle cannot be passed in through a question.
+* The glossary has about twenty short definitions written for this library.
+  It has not been reviewed by an actuary.
+* With the smallest model (Qwen3 0.6B), two of three unusually worded test
+  questions were still not recognised. The model's own explanations are
+  never shown, because that model gave false definitions when tried.
+* Apart from ``ask``, no calculation in ACTUNEO uses a language model.
 * The memory each model needs is an estimate: the size of the file plus
   about 1 GB. The rule that keeps models above about 5 GB off processors is
   a judgement about speed, not a measurement.

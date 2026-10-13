@@ -137,55 +137,68 @@ print(mack.summary().round(3))
 print(f"IBNR {mack.total_ibnr:,.0f} with standard error {mack.total_mack_se:,.0f}")
 ```
 
-### A Local AI Model (optional)
+### Ask a Question, Get a Worked Solution
 
-`actuneo.ai` sets up a language model that runs on your own machine. It looks at
-your memory, graphics card and disk, recommends the largest model the machine can
-run comfortably, tells you the download size, and asks before downloading. After
-that it works offline and costs nothing.
-
-```bash
-pip install actuneo[ai]
-```
-
-Set it up in a terminal, where you answer the question and see the download's progress:
+Type an actuarial question in plain words and get the answer set out like a textbook
+solution: what was given, each step with its formula, the substitution and the result,
+the answer, and the assumptions behind it.
 
 ```bash
-actuneo-ai models       # every model and whether it fits this machine
-actuneo-ai setup        # shows the recommendation, asks, then downloads
-actuneo-ai status       # what is installed
-actuneo-ai benchmark    # how well the installed model does
-actuneo-ai remove       # delete the model and free the space
+actuneo-ai ask "What is the monthly repayment on a loan of 50,000 over 10 years at 8%?"
 ```
 
-Use `actuneo-ai setup --model tiny` to pick a model yourself, and `python -m actuneo.ai`
-if the `actuneo-ai` command is not found. The same things can be done from Python:
+```bash
+actuneo-ai chat
+```
+
+```bash
+actuneo-ai topics
+```
+
+In Python or a notebook:
 
 ```py
 import actuneo.ai as ai
 
-ai.setup()                  # shows the recommendation and asks before downloading
-ai.setup(auto=True)         # take the recommended model without asking
-ai.setup(model="small")     # take a particular model (see the table below)
-ai.setup(model="largest")   # the most this machine can hold
-ai.status()                 # what is installed, how big, and on what hardware
-ai.remove_model()           # delete the model and free the disk space
-
-model = ai.get_backend()
-print(model.generate("In one sentence, what is an IBNR reserve?"))
-
-tools = [{
-    "name": "life_expectancy",
-    "description": "Expectation of life at a given age",
-    "parameters": {"type": "object",
-                   "properties": {"age": {"type": "integer"}},
-                   "required": ["age"]},
-}]
-call = model.call_tools("How long is a 40 year old expected to live?", tools)
-print(call.name, call.arguments)    # life_expectancy {'age': 40}
+answer = ai.ask("If I am 45 now, what are the odds I am still alive at 70?")
+answer              # displays the worked solution in a notebook
+answer.value        # 0.6937
+print(answer.explain())
 ```
 
-The models are the Qwen3 family, chosen by how much memory is free:
+Fixed rules read the numbers out of the question ("120k", "eight and a half percent",
+"750 a month", "alive at 70") and recognise the calculation. ACTUNEO does the arithmetic,
+and the working is written from fixed templates, so no language model writes any figure
+or any step. If something needed is missing, the answer says what, instead of guessing.
+
+It covers present and accumulated values, annuities-certain, loan repayments, bond
+prices, effective rates, expectation of life, survival probabilities, pensions for life,
+term assurance premiums, chain ladder reserves, Mack's standard error, retirement fund
+projections and ZWL to ZiG. `examples/actuneo_ai_setup.ipynb` has questions to try at
+three levels of difficulty.
+
+#### An optional local model for unusual wording
+
+Clearly worded questions need no model. For wording the rules do not recognise, a
+language model that runs on your own machine can choose the calculation. It is offline
+and free after the download.
+
+```bash
+pip install "actuneo[ai]"
+```
+
+```bash
+actuneo-ai models
+```
+
+```bash
+actuneo-ai setup
+```
+
+`models` lists every model and whether it fits your machine. `setup` shows the
+recommendation, asks, and downloads with a progress bar. Other commands: `status`,
+`benchmark`, `remove`, and `setup --model KEY --force` to pick a model yourself. Use
+`python -m actuneo.ai` if the `actuneo-ai` command is not found.
 
 | Key | Model | Download | Free memory needed |
 |---|---|---|---|
@@ -196,37 +209,10 @@ The models are the Qwen3 family, chosen by how much memory is free:
 | `strong` | Qwen3 14B | 9.0 GB | about 16 GB, or a 13 GB graphics card |
 | `max` | Qwen3 30B-A3B | 18.6 GB | about 31 GB, or a 24 GB graphics card when asked for as `largest` |
 
-Four more can be installed by name to compare: `phi4-mini`, `phi4-mini-reasoning`,
-`gemma3-4b` and `deepseek-r1-14b`. To see how a model does on your machine:
-
-```py
-ai.benchmark()      # 20 actuarial requests: right function, right arguments, seconds
-```
-
-The model is used only to pick a function and fill in its arguments, a few dozen
-tokens, which keeps a processor fast enough:
-
-- the reply is held to a schema built from your tools, so even a small model cannot
-  name a function that does not exist;
-- Qwen3's reasoning mode is switched off (`/no_think`);
-- only the five most relevant tools are shown to the model;
-- threads are set to the physical cores and the context window is kept small;
-- the loaded model and recent answers are kept, so a repeated question is instant.
-
-If the machine is too small, or you would rather use a hosted model, bring your own
-key. The key is read from the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`,
-`ANTHROPIC_API_KEY`) or kept in memory for the session. It is never written to
-ACTUNEO's configuration file.
-
-```py
-ai.configure(provider="gemini", api_key="...")   # or "openai", "anthropic", "ollama"
-```
-
-The notebook `examples/actuneo_ai_setup.ipynb` walks through setup, the benchmark and
-removal.
-
-A language model can be wrong about actuarial work. `actuneo.ai` supplies the model;
-nothing in ACTUNEO's calculations depends on it, and its answers need checking.
+When the model does choose, the answer says so and asks you to check. A number the model
+supplies is accepted only if it appears in your question. If the machine is too small,
+use your own key instead: `actuneo-ai configure gemini` (or `openai`, `anthropic`,
+`ollama`). The key is never written to ACTUNEO's configuration file.
 
 ## Documentation
 
