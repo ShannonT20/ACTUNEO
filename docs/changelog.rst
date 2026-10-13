@@ -27,6 +27,18 @@ Added
     under the Pensions and Provident Funds Act [Chapter 24:32], and IPEC's minimum funding
     level
 * Documentation: a guide to pension scheme valuation with the method and how it was checked
+* ``actuneo.ai`` (optional, ``pip install actuneo[ai]``):
+
+  * ``setup()`` detects memory, processor, graphics card and free disk, recommends the
+    largest local model (quantised GGUF) the machine can run comfortably, shows the download
+    size, asks, downloads with resume and an integrity check, and remembers the choice
+  * A catalog of six models from 0.5 GB to 19.9 GB in a JSON file that can be replaced
+    without changing code
+  * ``LocalBackend`` (llama.cpp) with ``generate()`` and ``call_tools()``; tool choices are
+    constrained to a JSON schema built from the tools
+  * ``configure()`` to use Gemini, OpenAI, Anthropic or Ollama with the user's own key, which
+    is never written to the configuration file
+  * ``status()`` and ``remove_model()``
 
 Version 0.4.1 (2026-10-12)
 --------------------------

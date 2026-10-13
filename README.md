@@ -137,6 +137,55 @@ print(mack.summary().round(3))
 print(f"IBNR {mack.total_ibnr:,.0f} with standard error {mack.total_mack_se:,.0f}")
 ```
 
+### A Local AI Model (optional)
+
+`actuneo.ai` sets up a language model that runs on your own machine. It looks at
+your memory, graphics card and disk, recommends the largest model the machine can
+run comfortably, tells you the download size, and asks before downloading. After
+that it works offline and costs nothing.
+
+```bash
+pip install actuneo[ai]
+```
+
+```py
+import actuneo.ai as ai
+
+ai.setup()                  # shows the recommendation and asks before downloading
+ai.setup(auto=True)         # take the recommended model without asking
+ai.setup(model="small")     # take a particular model: tiny, small, medium, large, ...
+ai.status()                 # what is installed, how big, and on what hardware
+ai.remove_model()           # delete the model and free the disk space
+
+model = ai.get_backend()
+print(model.generate("In one sentence, what is an IBNR reserve?"))
+
+tools = [{
+    "name": "life_expectancy",
+    "description": "Expectation of life at a given age",
+    "parameters": {"type": "object",
+                   "properties": {"age": {"type": "integer"}},
+                   "required": ["age"]},
+}]
+call = model.call_tools("How long is a 40 year old expected to live?", tools)
+print(call.name, call.arguments)    # life_expectancy {'age': 40}
+```
+
+The reply to `call_tools` is held to a schema built from your tools, so even a small
+model cannot name a function that does not exist.
+
+If the machine is too small, or you would rather use a hosted model, bring your own
+key. The key is read from the environment (`GEMINI_API_KEY`, `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`) or kept in memory for the session. It is never written to
+ACTUNEO's configuration file.
+
+```py
+ai.configure(provider="gemini", api_key="...")   # or "openai", "anthropic", "ollama"
+```
+
+A language model can be wrong about actuarial work. `actuneo.ai` supplies the model;
+nothing in ACTUNEO's calculations depends on it, and its answers need checking.
+
 ## Documentation
 
 📚 **Full documentation is available at [https://actuneo.readthedocs.io/](https://actuneo.readthedocs.io/)**

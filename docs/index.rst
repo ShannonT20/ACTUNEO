@@ -149,6 +149,7 @@ Contents
    api/finance
    api/life
    api/pensions
+   api/ai
    api/ifrs17
    api/loss_reserving
    api/zimbabwe

@@ -398,6 +398,37 @@ Pensions
 * The analysis of surplus works on totals. It does not separate salary,
   mortality, withdrawal and retirement experience.
 
+AI module
+~~~~~~~~~
+
+* ``actuneo.ai`` supplies a language model and nothing else. No calculation
+  in ACTUNEO uses it, and nothing yet connects it to the library's
+  functions. A language model's statements about actuarial work can be
+  wrong and must be checked.
+* The memory each model needs is an estimate: the size of the file plus
+  about 1 GB. The rule that keeps models above about 5 GB off processors is
+  a judgement about speed, not a measurement.
+* Hardware detection covers NVIDIA cards and Apple Silicon. AMD and Intel
+  graphics are treated as absent, so those machines run on the processor.
+  Free memory is measured at the moment of setup: with other applications
+  open, a smaller model is recommended than the machine could otherwise run.
+* Constraining the output guarantees a valid function name and arguments
+  of the right shape, not the right values. In a trial on one machine the
+  0.5 GB model chose the correct function each time but gave a wrong value
+  for an argument (the sex of a life) and a wrong definition of an IBNR
+  reserve. Only the 0.5 GB model has been run; the larger tiers have been
+  checked for their download details, not loaded.
+* The local backend was run on one machine only (Apple Silicon, macOS).
+  Windows, Linux and NVIDIA cards are covered by tests with mock hardware.
+* Models are fetched by plain HTTP, because Hugging Face's newer transfer
+  method stalled on the connection used for the trial.
+* A metered connection cannot be detected. The warning is always shown.
+* The Gemini, OpenAI, Anthropic and Ollama backends are tested against
+  recorded request and reply shapes only. They have not been run against
+  the live services, and the default model names will go out of date.
+* The catalog's model addresses, sizes and checksums were read from Hugging
+  Face in October 2026. Models can be moved or withdrawn.
+
 Zimbabwe-specific content
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
