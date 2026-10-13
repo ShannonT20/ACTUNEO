@@ -4,6 +4,10 @@ Command line for actuneo.ai
 Run in a terminal, where the question is asked and the download shows a
 progress bar::
 
+    actuneo-ai ask "What is the present value of 1000 due in 5 years at 10%?"
+    actuneo-ai chat             # one question after another
+    actuneo-ai topics           # what can be calculated
+
     actuneo-ai setup            # recommend a model, ask, then download
     actuneo-ai models           # every model and whether it fits this machine
     actuneo-ai status           # what is installed
@@ -53,6 +57,29 @@ def _models() -> None:
     print("Install one with:  actuneo-ai setup --model KEY")
 
 
+def _chat(use_model: bool = True) -> None:
+    """Answer questions one after another until the user stops."""
+    from .assistant import ask
+    print("Ask an actuarial question in plain words. Type 'topics' to see what can be "
+          "calculated, or 'quit' to stop.")
+    while True:
+        try:
+            question = input("\n> ").strip()
+        except EOFError:
+            break
+        if question.lower() in ("quit", "exit", "q", "bye"):
+            break
+        if not question:
+            continue
+        if question.lower() in ("topics", "help", "?"):
+            from .assistant import topics
+            for _, row in topics().iterrows():
+                print(f"  {row['calculation']}\n      e.g. {row['example']}")
+            continue
+        print()
+        print(ask(question, use_model=use_model).explain())
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="actuneo-ai",
@@ -68,6 +95,15 @@ def _parser() -> argparse.ArgumentParser:
     setup.add_argument("--yes", "-y", action="store_true", help="answer yes to the question")
     setup.add_argument("--force", action="store_true",
                        help="choose again even if a model is already installed")
+
+    ask = commands.add_parser("ask", help="answer a question with a worked solution")
+    ask.add_argument("question", nargs="+", help="the question, in plain words")
+    ask.add_argument("--no-model", action="store_true",
+                     help="use the fixed rules only, not the language model")
+    chat = commands.add_parser("chat", help="ask one question after another")
+    chat.add_argument("--no-model", action="store_true",
+                      help="use the fixed rules only, not the language model")
+    commands.add_parser("topics", help="list the calculations that can be asked for")
 
     commands.add_parser("models", help="list the models and whether each fits this machine")
     commands.add_parser("status", help="show what is installed")
@@ -94,6 +130,15 @@ def main(argv: Optional[List[str]] = None) -> int:
                             model=getattr(arguments, "model", None),
                             yes=getattr(arguments, "yes", False),
                             force=getattr(arguments, "force", False))
+        elif command == "ask":
+            from .assistant import ask
+            print(ask(" ".join(arguments.question), use_model=not arguments.no_model).explain())
+        elif command == "chat":
+            _chat(use_model=not arguments.no_model)
+        elif command == "topics":
+            from .assistant import topics
+            for _, row in topics().iterrows():
+                print(f"{row['calculation']}\n    e.g. {row['example']}")
         elif command == "models":
             _models()
         elif command == "status":

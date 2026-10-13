@@ -19,6 +19,7 @@ This module supplies the model only. Nothing in ACTUNEO's calculations uses
 it, and a language model's answers about actuarial work must be checked.
 """
 
+from .assistant import Answer, ask, topics
 from .backends import (
     AnthropicBackend,
     Backend,
@@ -34,6 +35,7 @@ from .backends import (
 from .benchmark import benchmark
 from .catalog import ModelSpec, load_catalog
 from .hardware import GPUInfo, HardwareProfile, detect_hardware
+from .solutions import Solution, Step
 from .setup import (
     SetupError,
     configure,
@@ -46,6 +48,10 @@ from .setup import (
 )
 
 __all__ = [
+    'ask',
+    'topics',
+    'Answer',
+    'Solution',
     'setup',
     'status',
     'remove_model',
