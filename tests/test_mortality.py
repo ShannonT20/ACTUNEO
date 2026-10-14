@@ -224,6 +224,91 @@ class TestSouthAfricaTables:
         np.testing.assert_allclose(mt.qx(65), 0.02340, atol=1e-5)
 
 
+class TestEgyptTable:
+    """Egyptian Insurance Standard Mortality Table 2003-2006 (SOA table 2517)."""
+
+    # Ultimate rates of the British A49/52 table (SOA table 257), from which
+    # the Egyptian table was graduated: q(x) = 1.148 x q(x) of A49/52 - 0.0007
+    A4952 = {20: 0.00111, 30: 0.00116, 40: 0.00188, 50: 0.00599, 60: 0.0172, 71: 0.04995}
+
+    def test_loads(self):
+        assert MortalityTable.egypt_tables() == ["insured_2003_2006"]
+        mt = MortalityTable.from_egypt()
+        assert mt.metadata["country"] == "Egypt"
+        assert (mt.min_age, mt.max_age) == (20, 71)
+        assert np.all(np.diff(mt.qx_values) >= 0)
+
+    def test_published_graduation_formula(self):
+        mt = MortalityTable.from_egypt("insured_2003_2006")
+        for age, rate in self.A4952.items():
+            np.testing.assert_allclose(mt.qx(age), 1.148 * rate - 0.0007, atol=1e-5)
+
+    def test_published_values(self):
+        mt = MortalityTable.from_egypt()
+        assert mt.qx(40) == pytest.approx(0.001459)
+        assert mt.qx(71) == pytest.approx(0.05664)
+
+    def test_unknown_table(self):
+        with pytest.raises(ValueError, match="Unknown Egypt table"):
+            MortalityTable.from_egypt("annuitants")
+
+
+class TestUNPopulationTables:
+    """UN World Population Prospects 2024 life tables for African countries, 2023."""
+
+    def test_every_african_country(self):
+        countries = MortalityTable.un_population_countries()
+        assert len(countries) == 58
+        assert set(countries["year"]) == {2023}
+        assert {"KEN", "NGA", "GHA", "MUS", "EGY", "ZWE", "ZAF", "MAR", "ETH"} <= set(countries["iso3"])
+        assert set(countries["region"]) == {"Eastern Africa", "Middle Africa", "Northern Africa",
+                                            "Southern Africa", "Western Africa"}
+
+    @pytest.mark.parametrize("country", ["Kenya", "NGA", "ghana", "Mauritius", "Namibia",
+                                         "Côte d'Ivoire", "United Republic of Tanzania"])
+    @pytest.mark.parametrize("sex", ["M", "F"])
+    def test_loads_by_name_or_code(self, country, sex):
+        mt = MortalityTable.from_un_population(country, sex)
+        assert (mt.min_age, mt.max_age) == (0, 100) and mt.is_closed
+        assert mt.metadata["year"] == 2023 and mt.metadata["sex"] == sex
+        assert np.all((mt.qx_values > 0) & (mt.qx_values <= 1))
+
+    def test_agrees_with_the_un_figures_for_every_country(self):
+        for iso3 in MortalityTable.un_population_countries()["iso3"]:
+            for sex in ("M", "F"):
+                mt = MortalityTable.from_un_population(iso3, sex)
+                published = mt.published
+                np.testing.assert_allclose(mt.lx_values, published["lx"], atol=0.01)
+                # From age 1 the expectation of life agrees exactly; at birth the
+                # UN spreads infant deaths unevenly over the first year
+                np.testing.assert_allclose(mt.ex_values[1:], published["ex"][1:], atol=1e-3)
+                assert abs(mt.ex_values[0] - published["ex"][0]) < 0.05
+
+    def test_published_life_expectancy(self):
+        # UN World Population Prospects 2024, life expectancy at birth in 2023
+        assert MortalityTable.from_un_population("KEN", "F").life_expectancy(0) == \
+            pytest.approx(65.92, abs=0.02)
+        assert MortalityTable.from_un_population("MUS", "M").published["ex"][0] == \
+            pytest.approx(71.9347)
+
+    def test_women_live_longer_in_every_country(self):
+        for iso3 in MortalityTable.un_population_countries()["iso3"]:
+            men = MortalityTable.from_un_population(iso3, "M").life_expectancy(0)
+            women = MortalityTable.from_un_population(iso3, "F").life_expectancy(0)
+            assert women > men, iso3
+
+    def test_works_with_life_contingencies(self):
+        sf = SurvivalFunctions(MortalityTable.from_un_population("KEN", "M"), interest_rate=0.08)
+        assert 0 < sf.assurance(40) < 1
+        assert sf.assurance(40) == pytest.approx(1 - 0.08 / 1.08 * sf.annuity_due(40))
+
+    def test_errors(self):
+        with pytest.raises(ValueError, match="No UN life table for 'Atlantis'"):
+            MortalityTable.from_un_population("Atlantis", "M")
+        with pytest.raises(ValueError, match="sex must be"):
+            MortalityTable.from_un_population("Kenya", "X")
+
+
 class TestSurvivalFunctions:
     """Test cases for SurvivalFunctions class."""
 

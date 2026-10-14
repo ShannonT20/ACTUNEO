@@ -33,6 +33,10 @@ _SOUTH_AFRICA_TABLES = {
     "saifl98": "saiml98_saifl98_female.csv",
 }
 
+_EGYPT_TABLES = {
+    "insured_2003_2006": "egypt_insured_2003_2006.csv",
+}
+
 _ZIMBABWE_2023_TABLES = {
     "male_assured_lives": "a_male_assured_lives_a_life_table.csv",
     "group_life_male": "c_group_life_assurance_male_and_female_a_male_life_table.csv",
@@ -360,6 +364,120 @@ class MortalityTable:
                 metadata={"country": "South Africa", "table": table,
                           "source": "ASSA CSI"},
             )
+
+    @staticmethod
+    def egypt_tables() -> List[str]:
+        """Names accepted by :meth:`from_egypt`."""
+        return sorted(_EGYPT_TABLES)
+
+    @classmethod
+    def from_egypt(cls, table: str = "insured_2003_2006") -> 'MortalityTable':
+        """
+        Load an Egyptian mortality table shipped with ACTUNEO.
+
+        Available tables:
+
+        - ``insured_2003_2006``: Egyptian Insurance Standard Mortality Table
+          2003-2006, ages 20 to 71, males and females combined. Built by
+          M. F. Amer from the 2003-2006 experience of two major Egyptian life
+          insurers, medical and non-medical business together, and graduated
+          by reference to the British A49/52 ultimate table:
+          ``q(x) = 1.148 x q(x) of A49/52 - 0.0007``.
+
+        Source: Society of Actuaries, Mortality and Other Rate Tables, table
+        2517, citing M. F. Amer, "Standard Life Table Mortality 2009 Egyptian
+        Life Insurance Companies 2003 to 2006", International News No. 50,
+        Society of Actuaries (2010).
+
+        Args:
+            table: Table name, see :meth:`egypt_tables`
+
+        Returns:
+            MortalityTable instance
+        """
+        table = table.strip().lower()
+        if table not in _EGYPT_TABLES:
+            raise ValueError(
+                f"Unknown Egypt table '{table}'. Available: {sorted(_EGYPT_TABLES)}"
+            )
+        csv_path = resources.files("actuneo.mortality") / f"data/egypt/{_EGYPT_TABLES[table]}"
+        with resources.as_file(csv_path) as p:
+            return cls.from_csv(
+                str(p), age_col="age", qx_col="qx", name=f"Egypt - {table}",
+                metadata={"country": "Egypt", "table": table,
+                          "source": "Society of Actuaries table 2517 (M. F. Amer)"},
+            )
+
+    @staticmethod
+    def _un_life_tables() -> pd.DataFrame:
+        if "_UN_LIFE_TABLES" not in globals():
+            path = resources.files("actuneo.mortality") / "data/un_wpp_2024/africa.csv"
+            with resources.as_file(path) as p:
+                globals()["_UN_LIFE_TABLES"] = pd.read_csv(p, keep_default_na=False,
+                                                           na_values=[""])
+        return globals()["_UN_LIFE_TABLES"]
+
+    @staticmethod
+    def un_population_countries() -> pd.DataFrame:
+        """
+        The African countries whose UN population life tables are shipped:
+        ISO code, name, region and year. Names accepted by
+        :meth:`from_un_population`.
+        """
+        data = MortalityTable._un_life_tables()
+        return (data[["iso3", "country", "region", "year"]].drop_duplicates()
+                .sort_values("country").reset_index(drop=True))
+
+    @classmethod
+    def from_un_population(cls, country: str, sex: str) -> 'MortalityTable':
+        """
+        Load the UN population life table of an African country.
+
+        These are the single-age (complete) life tables of the UN World
+        Population Prospects 2024, medium variant, for 2023, the latest year
+        of estimates. They describe the whole population of the country, not
+        insured lives or pensioners: insured lives usually die at lower rates.
+        For most African countries they are estimates from models and partial
+        data, not tables built from a complete record of deaths.
+
+        Ages run from 0 to 100, where 100 stands for 100 and over and its
+        ``qx`` is 1. The years lived beyond 100 are taken from the UN's own
+        ``Tx``, so expectations of life include them. The UN's ``mx``,
+        ``lx``, ``Tx`` and ``ex`` columns are kept in :attr:`published`.
+
+        Source: United Nations, Department of Economic and Social Affairs,
+        Population Division (2024). World Population Prospects 2024.
+        Licensed under Creative Commons Attribution 3.0 IGO.
+
+        Args:
+            country: Country name or ISO 3166 alpha-3 code, for example
+                "Kenya" or "KEN". See :meth:`un_population_countries`.
+            sex: "M" or "F" (or "male", "female")
+
+        Returns:
+            MortalityTable instance
+        """
+        data = MortalityTable._un_life_tables()
+        key = str(country).strip().lower()
+        match = data[(data["iso3"].str.lower() == key) | (data["country"].str.lower() == key)]
+        if match.empty:
+            names = ", ".join(MortalityTable.un_population_countries()["country"])
+            raise ValueError(f"No UN life table for '{country}'. Available: {names}")
+        code = str(sex).strip().upper()[:1]
+        if code not in ("M", "F"):
+            raise ValueError("sex must be 'M' or 'F'")
+        rows = match[match["sex"] == code].sort_values("age")
+        name, iso3, year = rows["country"].iloc[0], rows["iso3"].iloc[0], int(rows["year"].iloc[0])
+        return cls(
+            rows["age"].to_numpy(), rows["qx"].to_numpy(),
+            name=f"UN WPP 2024 - {name} {year} {'males' if code == 'M' else 'females'}",
+            metadata={"country": name, "iso3": iso3, "sex": code, "year": year,
+                      "radix": 100000.0, "source": "UN World Population Prospects 2024"},
+            # The UN's Tx counts the years lived beyond age 100 by those
+            # who reach it, so expectations of life include them
+            table_columns={"mx": rows["mx"].to_numpy(), "lx": rows["lx"].to_numpy(),
+                           "Tx": rows["Tx"].to_numpy(), "ex": rows["ex"].to_numpy()},
+        )
 
     def to_dataframe(self) -> pd.DataFrame:
         """Life table derived from qx as a DataFrame."""
