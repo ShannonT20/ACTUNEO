@@ -3,8 +3,8 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
-Unreleased
-----------
+Version 0.4.2 (2026-10-14)
+--------------------------
 
 Added
 ~~~~~

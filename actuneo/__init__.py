@@ -24,10 +24,10 @@ Planned modules (not yet implemented):
 - utils: Excel/CSV input-output functions, validation, and reporting
 
 Author: Shannon Tafadzwa Sikadi
-Version: 0.4.1
+Version: 0.4.2
 """
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 __author__ = "Shannon Tafadzwa Sikadi"
 __description__ = "African Actuarial Python Library for insurance, pensions, and investment analytics"
 
