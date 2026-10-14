@@ -3,6 +3,19 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
+Unreleased
+----------
+
+Added
+~~~~~
+
+* Egypt insured lives mortality table 2003-2006 (``MortalityTable.from_egypt``),
+  SOA table 2517, ages 20-71, sexes combined.
+* UN World Population Prospects 2024 life tables for 58 African countries,
+  2023, male and female, ages 0-100 (``MortalityTable.from_un_population``,
+  ``MortalityTable.un_population_countries``). Whole-population tables, not
+  insured lives.
+
 Version 0.4.1 (2026-10-12)
 --------------------------
 

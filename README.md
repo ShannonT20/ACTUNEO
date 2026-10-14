@@ -20,7 +20,7 @@ ACTUNEO is an early-stage library. It has not been reviewed by an independent ac
 
 ### Implemented Modules
 
-- **mortality**: Mortality tables, select mortality, life contingencies and commutation functions, with the Zimbabwe 2023 tables and AM92 included
+- **mortality**: Mortality tables, select mortality, life contingencies and commutation functions, with the Zimbabwe 2023 tables, AM92, South African ASSA tables, an Egypt insured lives table and UN population life tables for 58 African countries included
 - **finance**: Interest theory, yield curve construction/interpolation, duration, and convexity
 - **life**: Life assurance, annuities, net and gross premiums and reserves with expenses, with-profits benefits, mortality profit, multiple decrement and multi-state models, unit-linked policies and profit testing
 - **loss_reserving**: Claims triangles, chain-ladder (basic and inflation-adjusted), average cost per claim, Bornhuetter-Ferguson, Mack's standard error and bootstrap

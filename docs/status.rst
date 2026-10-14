@@ -51,7 +51,9 @@ What is implemented
        expectancy, select mortality, ten Zimbabwe 2023 tables, AM92,
        and seven South African ASSA tables (SA85-90 in three variants,
        SA Pensioner 2005-10 male and female, SAIML98 and SAIFL98
-       annuitant standard tables)
+       annuitant standard tables), the Egypt insured lives table
+       2003-2006, and UN population life tables for 58 African
+       countries (2023, male and female)
      - Hand calculation. The Zimbabwe tables agree with the columns in
        their source files. AM92 agrees with its graduation formula and
        reproduces published annuity and assurance values. The SA tables
@@ -182,6 +184,24 @@ Mortality and life
   are 15-40 years old. The 1991-94, 1995-98, and 1999-2002 ASSA XLS
   files are A/E investigation reports (actual vs. expected ratios against
   SA85-90), not graduated tables, and have not been encoded.
+* The Egypt table (``MortalityTable.from_egypt``) is SOA table 2517,
+  insured lives 2003-2006 by M. F. Amer, sexes combined, ages 20-71 only.
+  It is a graduation of A1949-52, q(x) = 1.148 q_A49/52(x) - 0.0007, and agrees
+  with that formula to within 0.00001. Whole-life values cannot be
+  computed from it because it stops at 71. It is 20 years old.
+* The UN tables (``MortalityTable.from_un_population``) are from the UN
+  World Population Prospects 2024 (CC BY 3.0 IGO), year 2023, ages 0-100
+  with 100 meaning 100 and over. They are whole-population tables, not
+  insured lives, and for most African countries they are model-based
+  estimates rather than tables graduated from registered deaths. Insured
+  lives usually die at much lower rates. ACTUNEO's lx and ex agree with
+  the UN's own figures for all 116 tables (ex exactly from age 1; up to
+  0.02 years at birth, because the UN spreads infant deaths unevenly over
+  the first year). The data file is rebuilt with
+  ``tools/build_un_life_tables.py``.
+* No published insured lives table was found for Kenya, Nigeria, Ghana,
+  Mauritius or the other countries. Kenya's KE 2007-2010 exists but has no
+  official download, so it is not included.
 * The Zimbabwe 2023 data shipped has gaps: there is no female assured-lives
   table, group life and pre-retirement pension tables stop at age 70,
   post-retirement tables start at age 76 (ages 71 to 75 are missing for
