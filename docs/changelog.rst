@@ -27,51 +27,6 @@ Added
     under the Pensions and Provident Funds Act [Chapter 24:32], and IPEC's minimum funding
     level
 * Documentation: a guide to pension scheme valuation with the method and how it was checked
-* ``actuneo.ai.ask()`` and ``actuneo-ai ask`` / ``actuneo-ai chat``: a question in plain
-  words is answered with a worked solution set out like a textbook's. Fixed rules read the
-  numbers and recognise the calculation, ACTUNEO does the arithmetic, and the working comes
-  from templates, not from a language model. Fourteen calculations: present and accumulated
-  values, annuities-certain, loan repayments, bond prices, effective rates, expectation of
-  life, survival probabilities, pensions for life, term assurance premiums, chain ladder
-  reserves, Mack's standard error, retirement fund projections and ZWL to ZiG, plus net
-  present value and internal rate of return and the IFRS 17 premium allocation approach.
-  Missing information is asked for instead of guessed. Needs no optional packages
-
-  * Each answer states what was taken from the question, what was assumed because it was
-    not stated, and any condition mentioned that the calculation does not allow for
-  * Loan repayments on a reducing balance (nominal rate), an effective rate or a flat rate;
-    pensions paid monthly, quarterly, half-yearly or yearly, in advance or in arrears
-  * A capable model (about 4B parameters or more, or a hosted one) reads the question
-    first: what is asked, the conditions stated, and conventions put in the user's own
-    words. Smaller models are not trusted to, having changed answers when tried
-  * A question in several parts is split and each part answered
-  * Your own data can be passed: a claims triangle, a mortality table or yearly cash flows
-  * Mortality questions use the Zimbabwe 2023 tables unless another basis is named
-  * Questions in words are answered by the language model, speaking as an actuary, from its
-    own knowledge and from the matching passages of ACTUNEO's documentation and docstrings
-    (``actuneo.ai.knowledge``), which are listed with the answer
-* ``actuneo.ai`` local model (optional, ``pip install actuneo[ai]``):
-
-  * ``setup()`` detects memory, processor, graphics card and free disk, recommends the
-    largest local model (quantised GGUF) the machine can run comfortably, shows the download
-    size, asks, downloads with resume and an integrity check, and remembers the choice
-  * A catalog in a JSON file that can be replaced without changing code: six Qwen3 tiers
-    from 0.6B (0.4 GB, for a 4 GB machine with no GPU) through 8B (the default) to 30B-A3B,
-    and four challengers installed only by name (Phi-4-mini, Phi-4-mini-reasoning, Gemma 3
-    4B, DeepSeek-R1-Distill 14B)
-  * ``LocalBackend`` (llama.cpp) with ``generate()`` and ``call_tools()``. A tool is chosen
-    in two steps, each held to a JSON schema: the function, then its arguments. Qwen3's
-    reasoning mode is switched off, only the most relevant tools are shown
-    (``shortlist_tools``), threads follow the physical cores, and recent answers are
-    remembered
-  * An ``actuneo-ai`` command (also ``python -m actuneo.ai``) with ``setup``, ``models``,
-    ``status``, ``benchmark``, ``remove`` and ``configure``, so the question is asked and
-    the download's progress is shown in the terminal
-  * ``benchmark()``: twenty actuarial requests over twelve tools, scoring the function
-    chosen, the arguments and the time taken
-  * ``configure()`` to use Gemini, OpenAI, Anthropic or Ollama with the user's own key, which
-    is never written to the configuration file
-  * ``status()`` and ``remove_model()``
 
 Version 0.4.1 (2026-10-12)
 --------------------------
