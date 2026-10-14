@@ -154,29 +154,6 @@ What is implemented
      - Restating amounts by a price index, gain or loss on the net monetary
        position
      - Hand calculation
-   * - Pensions, defined benefit valuation
-     - Liabilities for active members, deferred pensioners and pensioners;
-       funding level; contribution rate; sensitivities; projected unit,
-       current unit, entry age, attained age and aggregate methods
-     - Published figures for the projected unit method: the example
-       illustrating paragraph 68 of IAS 19 at three discount rates, as
-       printed in an IFRS Interpretations Committee paper. Everything else:
-       hand calculation, agreement with the life functions, and identities
-   * - Pensions, IAS 19
-     - Cost in profit or loss, remeasurements, asset ceiling and the
-       reconciliations of the obligation, assets and net liability
-     - Hand calculation and identities (the reconciliations tie). The
-       interest and service cost of the IAS 19 example are reproduced
-   * - Pensions, defined contribution
-     - Projection of an account to retirement, replacement ratio, required
-       contribution rate; financial position of a fund and the bonus a
-       surplus supports
-     - Hand calculation (closed-form accumulations)
-   * - Pensions, Zimbabwean Act
-     - Reduction of minimum reserves on dissolution, leavers' share of
-       surplus, IPEC's minimum funding level
-     - Hand calculation. The rules were read from the text of the Act; the
-       75% funding level comes from IPEC's publications
 
 Known limitations
 -----------------
@@ -342,62 +319,6 @@ IFRS 17
 * Hyperinflation (IAS 29) is not applied to the statements. The helpers in
   ``actuneo.finance`` restate individual amounts only.
 
-Pensions
-~~~~~~~~
-
-* **No valuation from this module has been compared with one signed by an
-  actuary.** The only published figures reproduced are those of a five-year
-  lump sum example with no decrements. Benefits with decrements, pensions,
-  spouses and guarantees are checked by hand calculation and identities.
-* The module does not choose assumptions. Discount rate, salary increases,
-  mortality, rates of leaving and the proportion married are inputs, and
-  the answer is very sensitive to them.
-* Timing is approximate: active members' ages are whole numbers, leavers go
-  at mid-year, and salaries change once a year at the valuation date. A
-  scheme with a different salary review date or exact ages will differ
-  slightly.
-* One accrual rate applies to all service. Schemes with different rates for
-  different periods, career average benefits, integration with a state
-  pension, or benefits bought by transfers in cannot be described.
-* The Zimbabwe 2023 pension tables cannot support a full valuation on their
-  own: the pre-retirement tables stop at age 70, the post-retirement tables
-  start at 76 and the male pre-retirement table starts at 46. The gaps have
-  to be filled by the user.
-* A table that stops while mortality is below 1 is closed by assuming that
-  nobody survives its last year of age. For a table ending at 100 this
-  understates annuities at high ages. A warning is given when more than
-  1 life in 1,000 is affected.
-* The spouse's pension assumes independent lives, one age difference for
-  everyone and a single proportion married applied at the member's death.
-  Children's pensions and remarriage are not modelled.
-* Deferred pensioners are assumed not to die before retirement unless a
-  table is given, and no death benefit in deferment is valued.
-* On death in service, the lump sum is spread over service like every other
-  benefit. Some actuaries cost it separately as a one-year risk premium.
-* A refund of contributions on withdrawal is valued from the balance given
-  and future contributions. It is not compared with a minimum benefit.
-* The current unit method's normal cost leaves out the cost of salary
-  increases on past service, which falls due each year in addition.
-* The entry age method rounds service to whole years to find the age at
-  entry, and takes the entry age no lower than the start of the service
-  table.
-* The deficit recovery rate assumes total salaries grow at the general rate
-  of salary increase, with no change in the number of members.
-* There is no projection of future cash flows, funding level or
-  contributions, no asset model, no stochastic projection and no matching of
-  assets to liabilities.
-* IAS 19: settlements, the detailed split of actuarial gains between
-  demographic and financial assumptions, the disclosures of risks and
-  maturity, and other long-term employee benefits are not covered. Interest
-  on cash flows uses simple weighting by the timing supplied.
-* Defined contribution projections are deterministic. They give one outcome
-  for one set of assumptions and say nothing about the range of outcomes.
-* The defined contribution fund valuation takes the reserves as given. It
-  does not model a bonus smoothing account or the vested and non-vested
-  bonuses of an insured fund.
-* The analysis of surplus works on totals. It does not separate salary,
-  mortality, withdrawal and retirement experience.
-
 Zimbabwe-specific content
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -417,19 +338,12 @@ Zimbabwe-specific content
 * The notes on local practice come from public sources found online. No
   IPEC guideline on IFRS 17 was located, and the practice of individual
   Zimbabwean insurers has not been verified.
-* Pensions: sections 18 and 20 of the Pensions and Provident Funds Act
-  [Chapter 24:32] were read from the text of the Act (No. 3 of 2022). The
-  regulations made under it were not available. The minimum individual
-  reserve and the minimum pension increase follow formulas approved by the
-  Commission that are not in the Act, and are not implemented. The 75%
-  minimum funding level is quoted from IPEC's trustee training material and
-  quarterly reports, not from the instrument that sets it. The guidance on
-  converting pension values between currencies is not implemented.
 
 Not started
 ~~~~~~~~~~~
 
-``utils`` holds only the Excel report writer.
+The ``pensions`` module is an empty placeholder. ``utils`` holds only the
+Excel report writer.
 
 Simulation and macro data
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -492,8 +406,5 @@ What would raise confidence
   package on the same data.
 * Reproducing a published set of IFRS 17 accounts, or a worked example from
   a firm's training material, end to end.
-* Running the data and basis of a real pension valuation through the
-  pensions module and comparing the liabilities, member by member, with the
-  actuary's report.
 
 Reports of errors are welcome on the project's issue tracker.

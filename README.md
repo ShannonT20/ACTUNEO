@@ -24,7 +24,6 @@ ACTUNEO is an early-stage library. It has not been reviewed by an independent ac
 - **finance**: Interest theory, yield curve construction/interpolation, duration, and convexity
 - **life**: Life assurance, annuities, net and gross premiums and reserves with expenses, with-profits benefits, mortality profit, multiple decrement and multi-state models, unit-linked policies and profit testing
 - **loss_reserving**: Claims triangles, chain-ladder (basic and inflation-adjusted), average cost per claim, Bornhuetter-Ferguson, Mack's standard error and bootstrap
-- **pensions**: Defined benefit valuations (projected unit, entry age and other funding methods), funding level and contribution rates, IAS 19 accounting, defined contribution projections, and calculations from Zimbabwe's Pensions and Provident Funds Act
 - **ifrs17**: Premium allocation approach, liability for incurred claims with discounting and risk adjustment, reinsurance held, and the IFRS 17 statement of profit or loss, financial position and cash flows
 - **simulation**: Aggregate claims simulation, and a claims simulator that produces triangles with a known true cost for testing reserving methods
 - **macro_africa**: World Bank economic indicators (inflation, growth, exchange and interest rates) for African countries, downloaded on request
@@ -32,6 +31,7 @@ ACTUNEO is an early-stage library. It has not been reviewed by an independent ac
 
 ### In Development (Scaffolding Present)
 
+- **pensions**: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
 - **ifrs17** (further): General measurement model (GMM) and variable fee approach (VFA), with the contractual service margin
 - **utils**: Data input-output helpers, validation, and reporting utilities
 
@@ -201,7 +201,7 @@ We welcome contributions from the actuarial community, especially from African a
 - [x] Documentation setup
 
 ### Phase 2: Expansion
-- [x] Pension calculations
+- [ ] Pension calculations
 - [ ] IFRS 17 implementation
 - [ ] Loss reserving methods
 - [ ] African economic data connectors

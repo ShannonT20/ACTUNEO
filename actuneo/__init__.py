@@ -12,14 +12,12 @@ Modules:
   per claim, Bornhuetter-Ferguson, Mack's standard error and bootstrap
 - ifrs17: Premium allocation approach, liability for incurred claims, risk adjustment,
   reinsurance held and the IFRS 17 financial statements
-- pensions: Defined benefit valuations with a choice of funding method, IAS 19 accounting,
-  defined contribution projections, and calculations from Zimbabwe's Pensions and Provident
-  Funds Act
 - zimbabwe: Zimbabwe 2023 mortality table catalogue and currency reference data
 - simulation: Aggregate claims and a claims simulator for testing reserving methods
 - macro_africa: World Bank economic indicators for African countries
 
 Planned modules (not yet implemented):
+- pensions: Contribution schedules, benefit projections, and actuarial valuations for pension schemes
 - ifrs17 (further): General measurement model and variable fee approach, with the CSM
 - macro_africa (further): data beyond the World Bank indicators now read
 - simulation (further): stochastic models beyond aggregate claims and claim payments
@@ -41,7 +39,6 @@ from . import loss_reserving
 from . import ifrs17
 from . import simulation
 from . import macro_africa
-from . import pensions
 from . import zimbabwe
 from . import templates
 # Other modules will be imported as they are developed
@@ -54,7 +51,6 @@ __all__ = [
     'ifrs17',
     'simulation',
     'macro_africa',
-    'pensions',
     'zimbabwe',
     'templates',
     # Add other modules as they are implemented

@@ -1,67 +1,22 @@
 Pensions Module
 ===============
 
-Valuation of defined benefit schemes, IAS 19 accounting, defined
-contribution projections and calculations from Zimbabwe's Pensions and
-Provident Funds Act. See :doc:`../pensions` for a worked valuation and the
-method.
+The pensions module will provide tools for pension scheme calculations.
 
 .. automodule:: actuneo.pensions
-   :no-members:
-
-Defined benefit valuation
--------------------------
-
-.. autoclass:: actuneo.pensions.DBValuation
    :members:
+   :undoc-members:
+   :show-inheritance:
 
-.. automodule:: actuneo.pensions.valuation
-   :no-members:
+.. note::
+   This module is under development. Contributions are welcome!
 
-Scheme rules and assumptions
-----------------------------
+Planned Features
+----------------
 
-.. autoclass:: actuneo.pensions.DefinedBenefitScheme
-   :members:
+* Defined benefit calculations
+* Defined contribution projections
+* Pension valuation methods
+* Contribution schedules
+* Regulatory compliance tools
 
-.. autoclass:: actuneo.pensions.ValuationBasis
-   :members:
-
-.. autoclass:: actuneo.pensions.ServiceTable
-   :members:
-
-.. autoclass:: actuneo.pensions.SalaryScale
-   :members:
-
-Annuity factors
----------------
-
-.. autofunction:: actuneo.pensions.pension_annuity
-
-.. autofunction:: actuneo.pensions.survival_probabilities
-
-IAS 19
-------
-
-.. autoclass:: actuneo.pensions.IAS19Period
-   :members:
-
-Defined contribution
---------------------
-
-.. autoclass:: actuneo.pensions.DCProjection
-   :members:
-
-.. autoclass:: actuneo.pensions.DCFundValuation
-   :members:
-
-Analysis of surplus
--------------------
-
-.. autofunction:: actuneo.pensions.analysis_of_surplus
-
-Zimbabwe: Pensions and Provident Funds Act
-------------------------------------------
-
-.. automodule:: actuneo.pensions.zimbabwe
-   :members:

@@ -138,7 +138,6 @@ Contents
    quickstart
    examples
    ifrs17_case_study
-   pensions
    status
 
 .. toctree::
