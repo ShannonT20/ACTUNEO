@@ -341,7 +341,8 @@ class Triangle:
     @classmethod
     def _from_rows(cls, rows: list, cumulative: bool, name: str, layout: str,
                    origin, development, calendar, value, decimal: str,
-                   calendar_columns: Optional[bool]) -> 'Triangle':
+                   calendar_columns: Optional[bool],
+                   origin_in_columns: Optional[bool] = None) -> 'Triangle':
         """Build a triangle from the cells of a sheet or CSV file."""
         width = max((len(r) for r in rows), default=0)
         cells = pd.DataFrame([list(r) + [None] * (width - len(r)) for r in rows], dtype=object)
@@ -399,6 +400,18 @@ class Triangle:
         frame = frame.loc[keep_rows, keep_cols]
         frame = frame.loc[frame.notna().any(axis=1), frame.notna().any(axis=0)]
 
+        # Published claims development tables (IFRS 17.130) put the accident
+        # years across and the years of development down
+        def is_year(c):
+            return isinstance(c, int) and 1900 <= c <= 2200
+        if origin_in_columns is None:
+            numbered = [r for r in frame.index if isinstance(r, int)]
+            origin_in_columns = (all(is_year(c) for c in frame.columns) and len(numbered) >= 2
+                                 and all(0 <= r < 100 for r in numbered))
+        if origin_in_columns:
+            frame = frame.loc[[isinstance(r, int) for r in frame.index]].T
+            frame = frame.loc[:, frame.notna().any(axis=0)]
+            calendar_columns = False
         if calendar_columns is None:
             calendar_columns = (all(isinstance(c, int) and 1900 <= c <= 2200 for c in frame.columns)
                                 and all(isinstance(r, int) and 1900 <= r <= 2200
@@ -451,7 +464,8 @@ class Triangle:
                    development: Optional[str] = None,
                    calendar: Optional[str] = None,
                    value: Optional[str] = None,
-                   calendar_columns: Optional[bool] = None) -> 'Triangle':
+                   calendar_columns: Optional[bool] = None,
+                   origin_in_columns: Optional[bool] = None) -> 'Triangle':
         """
         Read a triangle from an Excel sheet (needs openpyxl).
 
@@ -484,6 +498,12 @@ class Triangle:
             calendar_columns: In the wide layout, True if the columns are
                 calendar years rather than development periods. By default
                 this is assumed when both rows and columns are years.
+            origin_in_columns: True if the origin years run across the header
+                and the development years down the first column, as in the
+                claims development tables of published financial statements.
+                Rows whose label is not a whole number (totals, current
+                estimate) are then ignored. By default this is assumed when
+                the columns are years and the rows are numbered 0, 1, 2, ...
 
         Returns:
             Triangle instance
@@ -498,7 +518,7 @@ class Triangle:
         label = name or (sheet_name if isinstance(sheet_name, str) else "Triangle")
         rows = sheet.where(sheet.notna(), None).values.tolist()
         return cls._from_rows(rows, cumulative, label, layout, origin, development, calendar,
-                              value, ".", calendar_columns)
+                              value, ".", calendar_columns, origin_in_columns)
 
     @classmethod
     def from_csv(cls,
@@ -511,6 +531,7 @@ class Triangle:
                  calendar: Optional[str] = None,
                  value: Optional[str] = None,
                  calendar_columns: Optional[bool] = None,
+                 origin_in_columns: Optional[bool] = None,
                  sep: Optional[str] = None,
                  decimal: Optional[str] = None) -> 'Triangle':
         """
@@ -521,8 +542,8 @@ class Triangle:
             path: CSV file
             cumulative: True if the values are cumulative, False if incremental
             name: Name for the triangle
-            layout, origin, development, calendar, value, calendar_columns:
-                As for :meth:`from_excel`
+            layout, origin, development, calendar, value, calendar_columns,
+            origin_in_columns: As for :meth:`from_excel`
             sep: Field separator (detected from the file by default: comma,
                 semicolon, tab or bar)
             decimal: Decimal mark, "." or "," (default "," for files
@@ -542,7 +563,7 @@ class Triangle:
             decimal = "," if sep == ";" else "."
         rows = list(csv.reader(text.splitlines(), delimiter=sep))
         return cls._from_rows(rows, cumulative, name, layout, origin, development, calendar,
-                              value, decimal, calendar_columns)
+                              value, decimal, calendar_columns, origin_in_columns)
 
     def to_excel(self, path: str, sheet_name: str = "Triangle") -> None:
         """

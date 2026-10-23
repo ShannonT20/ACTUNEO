@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from actuneo.finance import YieldCurve
+from actuneo.ifrs17 import claims_development_table
 from actuneo.loss_reserving import (
     Triangle, ChainLadder, MackChainLadder, BornhuetterFerguson, CapeCod,
     InflationAdjustedChainLadder, BootChainLadder, load_raa, load_genins,
@@ -806,3 +807,87 @@ class TestMissingCells:
             tri.to_incremental()
         with pytest.raises(ValueError, match="only supported for cumulative"):
             Triangle(gappy, cumulative=False, allow_missing=True)
+
+
+class TestZimbabweClaimsDevelopment:
+    """
+    Published claims development tables of Zimbabwean insurers: First Mutual
+    Holdings Limited, 2023 Annual Report, note 4.7.3, inflation adjusted
+    (IAS 29), audited, ZWL millions, accident years 2018-2023. The tables are
+    laid out as published, accident years across and development years down.
+    """
+
+    NICOZ_INCURRED = """Accidental year,2018,2019,2020,2021,2022,2023,Total
+Gross cumulative incurred claims,,,,,,,
+0,1,2,3,13,76,444,540
+1,5,9,16,27,205,-,263
+2,6,11,17,30,-,-,65
+3,12,11,18,-,-,-,41
+4,12,15,-,-,-,-,26
+5,21,-,-,-,-,-,21
+Current estimate of cumulative claims incurred,21,15,18,30,205,444,733
+"""
+    NICOZ_PAID = """Accidental year,2018,2019,2020,2021,2022,2023,Total
+0,1,1,3,12,68,360,447
+1,5,9,16,26,194,-,249
+2,6,10,16,29,-,-,62
+3,10,10,17,-,-,-,38
+4,11,14,-,-,-,-,25
+5,18,-,-,-,-,-,18
+Cumulative payments to date,18,14,17,29,194,360,632
+"""
+    FMRE_INCURRED = [[9, 10, 11, 11, 11, 11], [10, 11, 11, 11, 11], [14, 15, 15, 15],
+                     [22, 34, 35], [114, 135], [367]]
+    FMRE_PAID = [[9, 10, 11, 11, 11, 11], [10, 11, 11, 11, 11], [14, 16, 16, 16],
+                 [16, 27, 28], [106, 127], [307]]
+
+    @staticmethod
+    def triangle(rows):
+        values = [r + [np.nan] * (6 - len(r)) for r in rows]
+        return Triangle(values, origin=range(2018, 2024), development=range(6))
+
+    @pytest.fixture
+    def nicoz(self, tmp_path):
+        (tmp_path / "incurred.csv").write_text(self.NICOZ_INCURRED)
+        (tmp_path / "paid.csv").write_text(self.NICOZ_PAID)
+        return (Triangle.from_csv(str(tmp_path / "incurred.csv")),
+                Triangle.from_csv(str(tmp_path / "paid.csv")))
+
+    def test_published_layout_is_read(self, nicoz):
+        incurred, paid = nicoz
+        assert incurred.origin == list(range(2018, 2024))
+        assert incurred.development == list(range(6))
+        assert incurred.latest_diagonal().tolist() == [21, 15, 18, 30, 205, 444]
+        # Totals published under the tables
+        assert incurred.latest_diagonal().sum() == 733
+        assert paid.latest_diagonal().sum() == 632
+
+    def test_liability_for_incurred_claims_as_published(self, nicoz):
+        """Incurred less paid by accident year: published 3, 1, 1, 1, 11, 83 (total 100)."""
+        incurred, paid = nicoz
+        table = claims_development_table(paid, estimates=incurred.to_frame())
+        shown = table.loc["Liabilities for the accident years shown"]
+        # Within the rounding of the published figures to ZWL 1 million
+        np.testing.assert_allclose(shown.iloc[:-1], [3, 1, 1, 1, 11, 83], atol=1)
+        assert shown["Total"] == pytest.approx(100, abs=1)
+        assert table.loc["Current estimate of cumulative claims", "Total"] == 733
+
+    def test_reinsurer_liability_as_published(self):
+        """First Mutual Reinsurance: published -, -, (1), 7, 8, 61, total 75."""
+        incurred, paid = self.triangle(self.FMRE_INCURRED), self.triangle(self.FMRE_PAID)
+        shown = claims_development_table(paid, estimates=incurred.to_frame()).loc[
+            "Liabilities for the accident years shown"]
+        np.testing.assert_allclose(shown.iloc[:-1], [0, 0, -1, 7, 8, 61], atol=1)
+        assert shown["Total"] == pytest.approx(75, abs=1)
+
+    def test_chain_ladder_overstates_on_hyperinflated_figures(self, nicoz):
+        """
+        The figures are restated for hyperinflation, so the first development
+        factor (about 2.9) mostly measures the fall of the Zimbabwe dollar.
+        The chain-ladder then gives a reserve many times the insurer's. Data
+        like this must be deflated, or kept in a stable currency, first.
+        """
+        incurred, paid = nicoz
+        cl = ChainLadder(paid)
+        assert cl.factors.iloc[0] > 2.5
+        assert cl.total_ibnr > 10 * 100
