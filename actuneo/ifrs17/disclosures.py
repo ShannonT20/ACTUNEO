@@ -75,7 +75,7 @@ def claims_development_table(triangle,
         cdf = model.cdf.to_numpy()
         history = paid * cdf[None, :]
     else:
-        history = estimates.reindex(index=origins).to_numpy(dtype=float)
+        history = estimates.reindex(index=origins).to_numpy(dtype=float, copy=True)
         if history.shape[1] < latest_idx.max() + 1:
             raise ValueError("estimates needs a column for every year of development observed")
         history = history[:, :n_dev]
