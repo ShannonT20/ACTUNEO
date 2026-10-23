@@ -3,6 +3,28 @@ Changelog
 
 All notable changes to ACTUNEO will be documented here.
 
+Unreleased
+----------
+
+Changed
+~~~~~~~
+
+* ``Triangle.from_csv`` and ``Triangle.from_excel`` read long format files,
+  calendar (payment) years instead of development periods, titles and notes
+  above the table, Total rows and columns, amounts stored as text and
+  semicolon-separated files with decimal commas. Before, a long format file
+  or a sheet with a title was read without an error into a wrong triangle.
+* In a cumulative triangle read from a file, zeros after an origin period's
+  latest amount are read as not yet observed, with a warning. Before, they
+  were taken as the latest amounts and the reserves came out wrong.
+* ``Triangle.from_long`` takes ``calendar=`` for data by payment year.
+
+Tests
+~~~~~
+
+* The bootstrap is checked by accident year against the reserves and
+  prediction errors of England and Verrall (2002), not only in total.
+
 Version 0.4.2 (2026-10-14)
 --------------------------
 

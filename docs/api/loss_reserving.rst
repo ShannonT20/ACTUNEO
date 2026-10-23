@@ -122,6 +122,27 @@ Reports and Files
 ``Triangle.from_excel``, ``Triangle.from_csv``, ``Triangle.to_excel`` and
 ``Triangle.to_csv`` read and write triangles as spreadsheets.
 
+``from_csv`` and ``from_excel`` read the layouts insurers' systems and
+spreadsheets usually produce:
+
+* the triangle as a table (origin periods down, development periods across),
+  or one row per cell or transaction (long format, with columns such as
+  ``accident_year``, ``dev`` and ``paid`` recognised by name);
+* calendar (payment) years instead of development periods, in either layout;
+* titles and notes above the table, Total rows and columns, amounts stored
+  as text (``1,234``, ``(56)``), dashes for empty cells, and semicolon
+  separated files with decimal commas.
+
+In a cumulative triangle, zeros after an origin period's latest amount are
+read as not yet observed, with a warning.
+
+.. code-block:: python
+
+   paid = Triangle.from_csv("claims_listing.csv")      # long format, found by column names
+   paid = Triangle.from_csv("by_year.csv", layout="long", origin="AY",
+                            calendar="Payment year", value="Amount")
+   paid = Triangle.from_excel("board_pack.xlsx", sheet_name="Paid")
+
 .. autofunction:: actuneo.loss_reserving.compare_methods
 
 .. autofunction:: actuneo.loss_reserving.export_reserving_report
