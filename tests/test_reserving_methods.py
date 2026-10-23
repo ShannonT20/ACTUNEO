@@ -391,6 +391,14 @@ class TestBootChainLadder:
         boot = BootChainLadder(load_genins(), n_simulations=10000, seed=42)
         assert boot.mean_ibnr == pytest.approx(18680856, rel=0.02)
         assert boot.sd_ibnr == pytest.approx(2945659, rel=0.05)
+        # By accident year: chain-ladder reserves and analytic prediction
+        # errors of England and Verrall (2002), Table 1
+        reserves = [94634, 469511, 709638, 984889, 1419459, 2177641, 3920301, 4278972, 4625811]
+        errors = [110100, 216043, 260871, 303549, 375013, 495377, 789960, 1046512, 1980101]
+        np.testing.assert_allclose(boot.ibnr_simulations.mean().to_numpy()[1:], reserves,
+                                   rtol=0.03)
+        np.testing.assert_allclose(boot.ibnr_simulations.std().to_numpy()[1:], errors,
+                                   rtol=0.06)
 
     def test_reproducible_with_seed(self):
         raa = load_raa()
