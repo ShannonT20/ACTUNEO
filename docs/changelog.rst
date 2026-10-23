@@ -26,9 +26,25 @@ Changed
   ``group.profit_or_loss()["insurance_revenue"]``, now reads it as a row:
   ``group.profit_or_loss().loc["insurance_revenue"]``.
 
+* ``Triangle.from_csv`` and ``from_excel`` read the layout of published
+  claims development tables, with accident years across and development
+  years down (``origin_in_columns``, detected automatically).
+
+Fixed
+~~~~~
+
+* ``claims_development_table(..., estimates=triangle.to_frame())`` failed
+  with "assignment destination is read-only".
+
 Tests
 ~~~~~
 
+* Checked against the audited claims development tables of NicozDiamond
+  and First Mutual Reinsurance (First Mutual Holdings 2023 Annual Report,
+  note 4.7.3): the tables are read as published and the liabilities by
+  accident year agree to within the rounding to ZWL 1 million. The test
+  also records that the chain-ladder on these inflation-adjusted figures
+  gives a reserve many times the insurer's.
 * The bootstrap is checked by accident year against the reserves and
   prediction errors of England and Verrall (2002), not only in total.
 
