@@ -544,6 +544,104 @@ class TestTriangleFiles:
         assert tri.to_cumulative().latest_diagonal().tolist() == [165, 176, 120]
 
 
+class TestTriangleFileLayouts:
+    """Layouts of triangle files met in practice, each read back to the RAA triangle."""
+
+    @pytest.fixture
+    def raa(self):
+        return load_raa()
+
+    @staticmethod
+    def same(tri, raa):
+        np.testing.assert_array_equal(tri.values, raa.values)
+        assert tri.origin == raa.origin and tri.development == raa.development
+
+    def test_amounts_as_text_and_dashes(self, raa, tmp_path):
+        path = tmp_path / "t.csv"
+        raa.to_frame().map(lambda v: "-" if np.isnan(v) else f"{v:,.0f}").to_csv(path)
+        self.same(Triangle.from_csv(str(path)), raa)
+
+    def test_total_row_and_column_are_dropped(self, raa, tmp_path):
+        frame = raa.to_frame()
+        frame["Total"] = frame.sum(axis=1)
+        frame.loc["Grand total"] = frame.sum()
+        frame.to_csv(tmp_path / "t.csv")
+        self.same(Triangle.from_csv(str(tmp_path / "t.csv")), raa)
+
+    def test_long_format_file(self, raa, tmp_path):
+        long = raa.to_long().rename(columns={"origin": "Accident Year", "development": "Dev",
+                                             "value": "Paid"})
+        long.to_csv(tmp_path / "t.csv", index=False)
+        self.same(Triangle.from_csv(str(tmp_path / "t.csv")), raa)
+
+    def test_long_format_with_own_column_names(self, raa, tmp_path):
+        long = raa.to_long().rename(columns={"origin": "a", "development": "b", "value": "c"})
+        long.to_csv(tmp_path / "t.csv", index=False)
+        tri = Triangle.from_csv(str(tmp_path / "t.csv"), layout="long", origin="a",
+                                development="b", value="c")
+        self.same(tri, raa)
+        with pytest.raises(ValueError, match="could not find"):
+            Triangle.from_csv(str(tmp_path / "t.csv"), layout="long")
+
+    def test_long_format_by_payment_year(self, raa, tmp_path):
+        long = raa.to_long()
+        long["payment_year"] = long["origin"] + long["development"] - 1
+        by_year = long.drop(columns="development")
+        self.same(Triangle.from_long(by_year, development=None, calendar="payment_year"), raa)
+        by_year.to_csv(tmp_path / "t.csv", index=False)
+        self.same(Triangle.from_csv(str(tmp_path / "t.csv")), raa)
+
+    def test_wide_by_calendar_year(self, raa, tmp_path):
+        long = raa.to_long()
+        long["calendar"] = long["origin"] + long["development"] - 1
+        long.pivot(index="origin", columns="calendar", values="value").to_csv(tmp_path / "t.csv")
+        self.same(Triangle.from_csv(str(tmp_path / "t.csv")), raa)
+
+    def test_calendar_year_errors(self):
+        early = pd.DataFrame({"origin": [2020, 2021], "calendar": [2020, 2020], "value": [1, 2]})
+        with pytest.raises(ValueError, match="before its origin"):
+            Triangle.from_long(early, development=None, calendar="calendar")
+        dates = pd.DataFrame({"origin": ["2020-01-01"], "calendar": ["2020-06-01"], "value": [1]})
+        with pytest.raises(ValueError, match="from_transactions"):
+            Triangle.from_long(dates, development=None, calendar="calendar")
+
+    def test_excel_with_title_and_notes(self, raa, tmp_path):
+        pytest.importorskip("openpyxl")
+        path = tmp_path / "t.xlsx"
+        with pd.ExcelWriter(path) as writer:
+            pd.DataFrame([["Paid claims, USD thousands"], ["Source: claims system"]]).to_excel(
+                writer, header=False, index=False)
+            raa.to_frame().to_excel(writer, startrow=3)
+            pd.DataFrame([["Figures unaudited"]]).to_excel(writer, header=False, index=False,
+                                                          startrow=16)
+        self.same(Triangle.from_excel(str(path)), raa)
+
+    def test_semicolons_and_decimal_commas(self, tmp_path):
+        path = tmp_path / "t.csv"
+        path.write_text("Origine;1;2\n2022;1.250,50;1.900,25\n2023;1.300,75;\n")
+        tri = Triangle.from_csv(str(path))
+        np.testing.assert_allclose(tri.values, [[1250.5, 1900.25], [1300.75, np.nan]])
+
+    def test_brackets_are_negative(self, tmp_path):
+        path = tmp_path / "t.csv"
+        path.write_text('origin,1,2\n2022,100,(20)\n2023,90,\n')
+        tri = Triangle.from_csv(str(path), cumulative=False)
+        assert tri.values[0, 1] == -20
+
+    def test_zeros_for_cells_not_yet_observed(self, raa, tmp_path):
+        raa.to_frame().fillna(0).to_csv(tmp_path / "t.csv")
+        with pytest.warns(UserWarning, match="not yet observed"):
+            tri = Triangle.from_csv(str(tmp_path / "t.csv"))
+        self.same(tri, raa)
+        assert ChainLadder(tri).total_ibnr == pytest.approx(ChainLadder(raa).total_ibnr)
+
+    def test_incremental_zeros_are_kept(self, tmp_path):
+        path = tmp_path / "t.csv"
+        path.write_text("origin,1,2,3\n2021,100,50,0\n2022,110,0,\n2023,120,,\n")
+        tri = Triangle.from_csv(str(path), cumulative=False)
+        assert tri.to_cumulative().latest_diagonal().tolist() == [150, 110, 120]
+
+
 class TestReservingReport:
     """Comparison of methods and the formatted workbook."""
 
