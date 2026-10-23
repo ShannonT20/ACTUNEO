@@ -18,6 +18,13 @@ Changed
   latest amount are read as not yet observed, with a warning. Before, they
   were taken as the latest amounts and the reserves came out wrong.
 * ``Triangle.from_long`` takes ``calendar=`` for data by payment year.
+* The tables of a ``PAAGroup`` and ``PAAReinsuranceHeld``
+  (``financial_position``, ``supplementary_position``, the roll-forwards,
+  ``profit_or_loss`` and ``cash_flows``) now have the line items in rows and
+  the reporting periods in columns, as financial statements and
+  ``IFRS17Statements`` are laid out. Code that read a line as a column,
+  ``group.profit_or_loss()["insurance_revenue"]``, now reads it as a row:
+  ``group.profit_or_loss().loc["insurance_revenue"]``.
 
 Tests
 ~~~~~

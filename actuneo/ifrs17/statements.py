@@ -81,7 +81,7 @@ class IFRS17Statements:
     def _sum(self, items, table: str, column: str) -> np.ndarray:
         total = np.zeros(len(self.periods))
         for item in items:
-            total = total + getattr(item, table)()[column].to_numpy()
+            total = total + getattr(item, table)().loc[column].to_numpy()
         return total
 
     def _table(self, rows: dict) -> pd.DataFrame:

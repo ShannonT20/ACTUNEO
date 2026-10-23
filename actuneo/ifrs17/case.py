@@ -286,12 +286,12 @@ class PAACase:
             "Supplementary position": s.supplementary_position(),
         }
         for name, group in self.groups.items():
-            tables[f"{name} - LRC"] = group.lrc_rollforward().T
-            tables[f"{name} - LIC"] = group.lic_rollforward().T
+            tables[f"{name} - LRC"] = group.lrc_rollforward()
+            tables[f"{name} - LIC"] = group.lic_rollforward()
             tables[f"{name} - Reconciliation"] = group.reconciliation("all")
         for name, group in self.reinsurance.items():
-            tables[f"{name} - ARC"] = group.arc_rollforward().T
-            tables[f"{name} - AIC"] = group.aic_rollforward().T
+            tables[f"{name} - ARC"] = group.arc_rollforward()
+            tables[f"{name} - AIC"] = group.aic_rollforward()
             tables[f"{name} - Reconciliation"] = group.reconciliation("all")
         return tables
 
@@ -318,9 +318,9 @@ class PAACase:
 
         for name, group in self.groups.items():
             sheets[f"{name} - LRC"] = movement(
-                group.lrc_rollforward().T, f"{name}: liability for remaining coverage", BLUE)
+                group.lrc_rollforward(), f"{name}: liability for remaining coverage", BLUE)
             sheets[f"{name} - LIC"] = movement(
-                group.lic_rollforward().T, f"{name}: liability for incurred claims", BLUE)
+                group.lic_rollforward(), f"{name}: liability for incurred claims", BLUE)
             sheets[f"{name} - Reconciliation"] = Sheet(
                 group.reconciliation("all"),
                 f"{name}: reconciliation of insurance contract liabilities",
@@ -336,9 +336,9 @@ class PAACase:
             )
         for name, group in self.reinsurance.items():
             sheets[f"{name} - ARC"] = movement(
-                group.arc_rollforward().T, f"{name}: asset for remaining coverage", GREY)
+                group.arc_rollforward(), f"{name}: asset for remaining coverage", GREY)
             sheets[f"{name} - AIC"] = movement(
-                group.aic_rollforward().T, f"{name}: asset for incurred claims", GREY)
+                group.aic_rollforward(), f"{name}: asset for incurred claims", GREY)
             sheets[f"{name} - Reconciliation"] = Sheet(
                 group.reconciliation("all"),
                 f"{name}: reconciliation of reinsurance contract assets",

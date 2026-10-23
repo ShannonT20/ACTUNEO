@@ -62,7 +62,7 @@ class TestLiabilityForRemainingCoverage:
         np.testing.assert_allclose(g.amortisation, 45)
         np.testing.assert_allclose(g.lrc, [765, 510, 255, 0])
 
-        roll = g.lrc_rollforward()
+        roll = g.lrc_rollforward().T
         assert roll.loc["30.09.X1", "opening"] == 0
         assert roll.loc["31.12.X1", "opening"] == 765
         np.testing.assert_allclose(
@@ -82,7 +82,7 @@ class TestLiabilityForRemainingCoverage:
         """Timing of the premium changes the balance sheet, not the profit."""
         results = [
             PAAGroup(p, expected_premium=1200, acquisition_cash_flows=[180, 0, 0, 0])
-            .profit_or_loss()["insurance_service_result"].to_numpy()
+            .profit_or_loss().T["insurance_service_result"].to_numpy()
             for p in ([1200, 0, 0, 0], [0, 0, 0, 1200], [300] * 4)
         ]
         for result in results:
@@ -93,10 +93,10 @@ class TestLiabilityForRemainingCoverage:
                      expense_acquisition_cash_flows=True)
         np.testing.assert_allclose(g.lrc, [900, 600, 300, 0])
         np.testing.assert_allclose(
-            g.profit_or_loss()["insurance_service_result"], [120, 300, 300, 300]
+            g.profit_or_loss().T["insurance_service_result"], [120, 300, 300, 300]
         )
         # Total profit is the same as when the cash flows are deferred
-        assert g.profit_or_loss()["insurance_service_result"].sum() == 1200 - 180
+        assert g.profit_or_loss().T["insurance_service_result"].sum() == 1200 - 180
 
     def test_acquisition_cash_flows_paid_later(self):
         """A cost paid half way through is spread over the cover still to be given."""
@@ -142,7 +142,7 @@ class TestOnerousContracts:
         np.testing.assert_allclose(group.lrc, [800, 560, 255, 0])
 
     def test_loss_and_reversal_in_profit_or_loss(self, group):
-        losses = group.profit_or_loss()["losses_on_onerous_contracts"]
+        losses = group.profit_or_loss().T["losses_on_onerous_contracts"]
         np.testing.assert_allclose(losses, [-35, -15, 50, 0])
         # The loss reverses in full by the end of the cover
         assert losses.sum() == pytest.approx(0)
@@ -156,9 +156,9 @@ class TestGroupArticulation:
     """Balances, profit and cash tie together."""
 
     def test_change_in_liability_is_cash_less_profit(self, group):
-        profit = group.profit_or_loss()
+        profit = group.profit_or_loss().T
         result = profit["insurance_service_result"] + profit["insurance_finance_expenses"]
-        cash = group.cash_flows()["net_cash_flow"]
+        cash = group.cash_flows().T["net_cash_flow"]
         change = np.diff(np.concatenate(([0.0], group.carrying_amount)))
         np.testing.assert_allclose(change, cash - result)
 
@@ -166,12 +166,12 @@ class TestGroupArticulation:
         g = PAAGroup([1200, 0, 0, 0], acquisition_cash_flows=[180, 0, 0, 0],
                      expense_acquisition_cash_flows=True, incurred_claims=[250] * 4,
                      claims_paid=[100, 200, 300, 400])
-        profit = g.profit_or_loss()["insurance_service_result"]
+        profit = g.profit_or_loss().T["insurance_service_result"]
         change = np.diff(np.concatenate(([0.0], g.carrying_amount)))
-        np.testing.assert_allclose(change, g.cash_flows()["net_cash_flow"] - profit)
+        np.testing.assert_allclose(change, g.cash_flows().T["net_cash_flow"] - profit)
 
     def test_lic_rollforward(self, group):
-        roll = group.lic_rollforward()
+        roll = group.lic_rollforward().T
         np.testing.assert_allclose(roll.drop(columns="closing").sum(axis=1), roll["closing"])
         np.testing.assert_allclose(roll["closing"], [110, 139, 132, 200])
         # Estimates of earlier claims were reduced in the second quarter
@@ -185,7 +185,7 @@ class TestGroupArticulation:
         np.testing.assert_allclose(g.adjustments_to_lic_pv, 0)
 
     def test_profit_or_loss(self, group):
-        profit = group.profit_or_loss()
+        profit = group.profit_or_loss().T
         np.testing.assert_allclose(profit["insurance_revenue"], 300)
         np.testing.assert_allclose(profit["insurance_service_expenses"], [-290, -267, -185, -260])
         np.testing.assert_allclose(profit["insurance_service_result"], [10, 33, 115, 40])
@@ -206,7 +206,7 @@ class TestGroupArticulation:
     def test_reconciliation_ties_to_profit_or_loss(self, group):
         for period in QUARTERS:
             table = group.reconciliation(period)
-            profit = group.profit_or_loss().loc[period]
+            profit = group.profit_or_loss().T.loc[period]
             assert table.loc["Insurance service result", "total"] == pytest.approx(
                 -profit["insurance_service_result"]
             )
@@ -214,6 +214,22 @@ class TestGroupArticulation:
         np.testing.assert_allclose(
             group.reconciliation().loc["Opening liabilities"], [255, 0, 120, 12, 387]
         )
+
+
+class TestLayout:
+    """Group tables are laid out like financial statements: periods across."""
+
+    def test_periods_in_columns(self, group, reinsurance):
+        tables = [group.financial_position(), group.supplementary_position(),
+                  group.lrc_rollforward(), group.lic_rollforward(), group.profit_or_loss(),
+                  group.cash_flows(), reinsurance.financial_position(),
+                  reinsurance.arc_rollforward(), reinsurance.aic_rollforward(),
+                  reinsurance.profit_or_loss(), reinsurance.cash_flows()]
+        for table in tables:
+            assert list(table.columns) == group.periods
+            assert table.columns.name == "period"
+        assert group.profit_or_loss().loc["insurance_revenue"].tolist() == [300] * 4
+        assert group.lrc_rollforward().index[0] == "opening"
 
 
 class TestEligibility:
@@ -429,7 +445,7 @@ class TestReinsuranceHeld:
         np.testing.assert_allclose(reinsurance.carrying_amount, [207, 148, 84, 38])
 
     def test_profit_or_loss(self, reinsurance):
-        profit = reinsurance.profit_or_loss()
+        profit = reinsurance.profit_or_loss().T
         np.testing.assert_allclose(profit["allocation_of_reinsurance_premiums"], -60)
         np.testing.assert_allclose(profit["recoveries_of_losses_on_onerous_contracts"],
                                    [7, -5, -2, 0])
@@ -438,18 +454,18 @@ class TestReinsuranceHeld:
 
     def test_articulation(self, reinsurance):
         """Change in the asset = result in profit or loss less net cash received."""
-        profit = reinsurance.profit_or_loss()
+        profit = reinsurance.profit_or_loss().T
         result = (profit["net_expenses_from_reinsurance_contracts"]
                   + profit["reinsurance_finance_income"])
-        cash = reinsurance.cash_flows()["net_cash_flow"]
+        cash = reinsurance.cash_flows().T["net_cash_flow"]
         change = np.diff(np.concatenate(([0.0], reinsurance.carrying_amount)))
         np.testing.assert_allclose(change, result - cash)
 
     def test_rollforwards(self, reinsurance):
-        arc = reinsurance.arc_rollforward()
+        arc = reinsurance.arc_rollforward().T
         np.testing.assert_allclose(arc.drop(columns="closing").sum(axis=1), arc["closing"])
         np.testing.assert_allclose(arc["closing"], [187, 122, 60, 0])
-        aic = reinsurance.aic_rollforward()
+        aic = reinsurance.aic_rollforward().T
         np.testing.assert_allclose(aic.drop(columns="closing").sum(axis=1), aic["closing"])
         np.testing.assert_allclose(aic["closing"], [20, 26, 24, 38])
         np.testing.assert_allclose(arc["closing"] + aic["closing"], reinsurance.carrying_amount)
@@ -579,7 +595,7 @@ class TestFinancialStatements:
                 one.loc["Opening assets"] + one.loc["Total changes in profit or loss"]
                 + one.loc["Total cash flows"], one.loc["Closing assets"])
             assert one.loc["Net expenses from reinsurance contracts", "total"] == pytest.approx(
-                reinsurance.profit_or_loss().loc[period,
+                reinsurance.profit_or_loss().T.loc[period,
                                                  "net_expenses_from_reinsurance_contracts"])
 
     def test_formatted_workbook(self, statements, tmp_path):
@@ -680,7 +696,7 @@ class TestGroupsAlreadyInForce:
         np.testing.assert_allclose(g.insurance_revenue, 300)
         np.testing.assert_allclose(g.amortisation, 45)
         np.testing.assert_allclose(g.lrc, [255, 0])
-        assert g.lrc_rollforward().loc[1, "opening"] == 510
+        assert g.lrc_rollforward().T.loc[1, "opening"] == 510
         assert g.opening_carrying_amount == 510
 
     def test_opening_claims_liability_and_loss_component(self):
@@ -727,10 +743,10 @@ class TestOtherExpensesAndOci:
         )
 
     def test_other_expenses(self, oci_group):
-        profit = oci_group.profit_or_loss()
+        profit = oci_group.profit_or_loss().T
         np.testing.assert_allclose(profit["incurred_claims_and_other_expenses"],
                                    [-212, -222, -202, -232])
-        np.testing.assert_allclose(oci_group.cash_flows()["claims_paid"],
+        np.testing.assert_allclose(oci_group.cash_flows().T["claims_paid"],
                                    [-112, -192, -212, -162])
         # Paid when incurred, so they pass through the claims liability without a balance
         table = oci_group.reconciliation("31.12.X1")
@@ -740,7 +756,7 @@ class TestOtherExpensesAndOci:
                          "lic_present_value"] == -192
 
     def test_finance_expenses_split(self, oci_group):
-        profit = oci_group.profit_or_loss()
+        profit = oci_group.profit_or_loss().T
         np.testing.assert_allclose(profit["insurance_finance_expenses"], [0, -2, -3, -3])
         np.testing.assert_allclose(profit["insurance_finance_expenses_oci"], [0, -4, -2, -1])
 
@@ -776,7 +792,7 @@ class TestOtherExpensesAndOci:
         r = PAAReinsuranceHeld([240, 0], recoveries_incurred=[40, 42],
                                recoveries_received=[20, 36], finance_income=[0, 3],
                                finance_income_in_oci=[0, 1])
-        profit = r.profit_or_loss()
+        profit = r.profit_or_loss().T
         np.testing.assert_allclose(profit["reinsurance_finance_income"], [0, 2])
         np.testing.assert_allclose(profit["reinsurance_finance_income_oci"], [0, 1])
 
@@ -826,7 +842,7 @@ class TestStatementNotes:
     def test_premiums_receivable_for_instalments(self):
         """Quarterly instalments: the unpaid premium of the year is receivable."""
         g = PAAGroup([300] * 4, expected_premium=1200, acquisition_cash_flows=[180, 0, 0, 0])
-        view = g.supplementary_position()
+        view = g.supplementary_position().T
         np.testing.assert_allclose(view["premiums_receivable"], [-900, -600, -300, 0])
         np.testing.assert_allclose(
             view["unearned_premium"] + view["premiums_receivable"]
@@ -974,7 +990,7 @@ class TestSignificantFinancingComponent:
 
     def test_interest_is_a_finance_expense(self):
         g = PAAGroup([1000, 0], lrc_discount_rate=0.05)
-        profit = g.profit_or_loss()
+        profit = g.profit_or_loss().T
         np.testing.assert_allclose(profit["insurance_finance_expenses"], -g.lrc_interest)
         # Over the whole cover the extra revenue and the interest expense cancel
         total = profit["insurance_service_result"].sum() + \
@@ -982,7 +998,7 @@ class TestSignificantFinancingComponent:
         assert total == pytest.approx(1000)
         change = np.diff(np.concatenate(([0.0], g.carrying_amount)))
         result = profit["insurance_service_result"] + profit["insurance_finance_expenses"]
-        np.testing.assert_allclose(change, g.cash_flows()["net_cash_flow"] - result)
+        np.testing.assert_allclose(change, g.cash_flows().T["net_cash_flow"] - result)
         table = g.reconciliation(1)
         assert table.loc["Net finance expenses from insurance contracts",
                          "lrc_excluding_loss_component"] == pytest.approx(50)
@@ -1028,7 +1044,7 @@ class TestGrowingGroups:
         np.testing.assert_allclose(g.amortisation, [7.5, 22.5, 15.0])
         np.testing.assert_allclose(g.unearned_premium, [50, 100, 0])
         np.testing.assert_allclose(g.lrc, [42.5, 85, 0])
-        view = g.supplementary_position()
+        view = g.supplementary_position().T
         np.testing.assert_allclose(view["premiums_receivable"], 0, atol=1e-9)
 
     def test_invalid(self):
@@ -1056,7 +1072,7 @@ class TestCaseFiles:
         assert (fire.loss_component > 0).all()
         # Premiums are received before cover starts: nothing is receivable
         np.testing.assert_allclose(
-            motor.supplementary_position()["premiums_receivable"], 0, atol=1e-6
+            motor.supplementary_position().T["premiums_receivable"], 0, atol=1e-6
         )
 
     def test_report_has_periods_in_columns(self):

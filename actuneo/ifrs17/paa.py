@@ -26,10 +26,23 @@ Liabilities are positive. In the profit or loss tables income is positive
 and expenses are negative.
 """
 
+import functools
+
 import numpy as np
 import pandas as pd
 from typing import Optional, Sequence
 from ._common import as_series, period_labels
+
+
+def _periods_across(method):
+    """Present a table as financial statements are laid out: one row per
+    line item and one column per reporting period."""
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        table = method(self, *args, **kwargs).T
+        table.columns.name = "period"
+        return table
+    return wrapper
 
 
 def paa_eligibility(coverage_period_months: float,
@@ -386,6 +399,7 @@ class PAAGroup:
         return (self.opening_lrc + self.opening_loss_component
                 + self.opening_lic_pv + self.opening_lic_ra)
 
+    @_periods_across
     def supplementary_position(self) -> pd.DataFrame:
         """
         The carrying amount analysed into the balances insurers reported
@@ -416,6 +430,7 @@ class PAAGroup:
             "carrying_amount": self.carrying_amount,
         })
 
+    @_periods_across
     def financial_position(self) -> pd.DataFrame:
         """Components of the carrying amount at each period end."""
         return self._frame({
@@ -429,6 +444,7 @@ class PAAGroup:
     # ------------------------------------------------------------------
     # Roll-forwards
     # ------------------------------------------------------------------
+    @_periods_across
     def lrc_rollforward(self) -> pd.DataFrame:
         """Movement of the liability for remaining coverage in each period."""
         deferred = (np.zeros(self.n_periods) if self.expense_acquisition_cash_flows
@@ -444,6 +460,7 @@ class PAAGroup:
             "closing": self.lrc,
         })
 
+    @_periods_across
     def lic_rollforward(self) -> pd.DataFrame:
         """Movement of the liability for incurred claims in each period."""
         return self._frame({
@@ -458,6 +475,7 @@ class PAAGroup:
     # ------------------------------------------------------------------
     # Performance and cash
     # ------------------------------------------------------------------
+    @_periods_across
     def profit_or_loss(self) -> pd.DataFrame:
         """
         Amounts recognised in profit or loss in each period, and insurance
@@ -486,6 +504,7 @@ class PAAGroup:
         table["insurance_finance_expenses_oci"] = -self.finance_expenses_in_oci
         return table
 
+    @_periods_across
     def cash_flows(self) -> pd.DataFrame:
         """Cash received (positive) and paid (negative) in each period."""
         table = self._frame({
@@ -692,6 +711,7 @@ class PAAReinsuranceHeld:
         # Adding zero turns any negative zero into a plain zero
         return pd.DataFrame(data, index=pd.Index(self.periods, name="period")) + 0.0
 
+    @_periods_across
     def financial_position(self) -> pd.DataFrame:
         """Components of the carrying amount at each period end."""
         return self._frame({
@@ -702,6 +722,7 @@ class PAAReinsuranceHeld:
             "carrying_amount": self.carrying_amount,
         })
 
+    @_periods_across
     def arc_rollforward(self) -> pd.DataFrame:
         """Movement of the asset for remaining coverage in each period."""
         closing = self.arc_excluding_loss_recovery + self.loss_recovery_component
@@ -716,6 +737,7 @@ class PAAReinsuranceHeld:
             "closing": closing,
         })
 
+    @_periods_across
     def aic_rollforward(self) -> pd.DataFrame:
         """Movement of the asset for incurred claims in each period."""
         closing = self.aic_present_value + self.aic_risk_adjustment
@@ -785,6 +807,7 @@ class PAAReinsuranceHeld:
         table.columns.name = self.periods[k]
         return table + 0.0
 
+    @_periods_across
     def profit_or_loss(self) -> pd.DataFrame:
         """Amounts recognised in profit or loss; income positive, expenses negative."""
         table = self._frame({
@@ -799,6 +822,7 @@ class PAAReinsuranceHeld:
         table["reinsurance_finance_income_oci"] = self.finance_income_in_oci
         return table
 
+    @_periods_across
     def cash_flows(self) -> pd.DataFrame:
         """Cash received (positive) and paid (negative) in each period."""
         table = self._frame({
